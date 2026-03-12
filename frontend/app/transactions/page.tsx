@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useDeposits } from '../hooks/useDeposits';
+import { useWithdrawals } from '../hooks/useWithdrawals';
 import { useAccount } from 'wagmi';
 
 type TabType = 'deposits' | 'withdrawals' | 'orders';
@@ -54,7 +55,7 @@ export default function TransactionsPage() {
         {/* Tab Content */}
         <div>
           {activeTab === 'deposits' && <DepositsTab userAddress={address || ''} />}
-          {activeTab === 'withdrawals' && <WithdrawalsTab />}
+          {activeTab === 'withdrawals' && <WithdrawalsTab userAddress={address || ''} />}
           {activeTab === 'orders' && <OrdersTab />}
         </div>
       </main>
@@ -143,8 +144,78 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function WithdrawalsTab() {
-  return <div className="text-[var(--text-secondary)]">Withdrawals content</div>;
+function WithdrawalsTab({ userAddress }: { userAddress: string }) {
+  const { data: withdrawals, isLoading, error } = useWithdrawals(userAddress);
+
+  if (isLoading) {
+    return <div className="text-[var(--text-secondary)]">Loading...</div>;
+  }
+
+  if (error) {
+    return <div className="text-red-400">Error: {error.message}</div>;
+  }
+
+  if (!withdrawals || withdrawals.length === 0) {
+    return <div className="text-[var(--text-secondary)]">No withdrawals yet</div>;
+  }
+
+  return (
+    <table className="w-full">
+      <thead>
+        <tr className="text-left text-sm text-[var(--text-secondary)]">
+          <th className="pb-3">Time</th>
+          <th className="pb-3">Amount</th>
+          <th className="pb-3">Status</th>
+          <th className="pb-3">Transaction</th>
+        </tr>
+      </thead>
+      <tbody>
+        {withdrawals.map((withdrawal) => (
+          <tr key={withdrawal.id} className="border-t border-[var(--border-default)]">
+            <td className="py-3 text-[var(--text-primary)]">
+              {new Date(withdrawal.createdAt).toLocaleString()}
+            </td>
+            <td className="py-3 text-[var(--text-primary)]">
+              {(Number(withdrawal.amount) / 1000000).toFixed(2)} USDC
+            </td>
+            <td className="py-3">
+              <WithdrawalStatusBadge status={withdrawal.status} />
+            </td>
+            <td className="py-3">
+              {withdrawal.txHash ? (
+                <a
+                  href={`https://sepolia.bscscan.com/tx/${withdrawal.txHash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[var(--accent-blue)] hover:underline"
+                >
+                  {withdrawal.txHash.slice(0, 10)}...{withdrawal.txHash.slice(-8)}
+                </a>
+              ) : (
+                <span className="text-[var(--text-secondary)]">-</span>
+              )}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function WithdrawalStatusBadge({ status }: { status: string }) {
+  const statusColors: Record<string, string> = {
+    pending: 'bg-yellow-900/20 text-yellow-400',
+    approved: 'bg-blue-900/20 text-blue-400',
+    processing: 'bg-purple-900/20 text-purple-400',
+    confirmed: 'bg-green-900/20 text-green-400',
+    rejected: 'bg-red-900/20 text-red-400',
+  };
+
+  return (
+    <span className={`px-2 py-1 rounded text-xs ${statusColors[status] || 'bg-gray-800 text-gray-400'}`}>
+      {status}
+    </span>
+  );
 }
 
 function OrdersTab() {
