@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useDeposits } from '../hooks/useDeposits';
 import { useWithdrawals } from '../hooks/useWithdrawals';
+import { useOrders } from '../hooks/useOrders';
 import { useAccount } from 'wagmi';
 
 type TabType = 'deposits' | 'withdrawals' | 'orders';
@@ -56,7 +57,7 @@ export default function TransactionsPage() {
         <div>
           {activeTab === 'deposits' && <DepositsTab userAddress={address || ''} />}
           {activeTab === 'withdrawals' && <WithdrawalsTab userAddress={address || ''} />}
-          {activeTab === 'orders' && <OrdersTab />}
+          {activeTab === 'orders' && <OrdersTab userAddress={address || ''} />}
         </div>
       </main>
     </div>
@@ -218,6 +219,90 @@ function WithdrawalStatusBadge({ status }: { status: string }) {
   );
 }
 
-function OrdersTab() {
-  return <div className="text-[var(--text-secondary)]">Orders content</div>;
+function OrdersTab({ userAddress }: { userAddress: string }) {
+  const { data: orders, isLoading, error } = useOrders(userAddress);
+
+  if (isLoading) {
+    return <div className="text-[var(--text-secondary)]">Loading...</div>;
+  }
+
+  if (error) {
+    return <div className="text-red-400">Error: {error.message}</div>;
+  }
+
+  if (!orders || orders.length === 0) {
+    return <div className="text-[var(--text-secondary)]">No orders yet</div>;
+  }
+
+  return (
+    <table className="w-full">
+      <thead>
+        <tr className="text-left text-sm text-[var(--text-secondary)]">
+          <th className="pb-3">Time</th>
+          <th className="pb-3">Side</th>
+          <th className="pb-3">Type</th>
+          <th className="pb-3">Size</th>
+          <th className="pb-3">Price</th>
+          <th className="pb-3">Status</th>
+          <th className="pb-3">Transaction</th>
+        </tr>
+      </thead>
+      <tbody>
+        {orders.map((order) => (
+          <tr key={order.id} className="border-t border-[var(--border-default)]">
+            <td className="py-3 text-[var(--text-primary)]">
+              {new Date(order.createdAt).toLocaleString()}
+            </td>
+            <td className="py-3">
+              <span className={order.side === 'long' ? 'text-green-400' : 'text-red-400'}>
+                {order.side.toUpperCase()}
+              </span>
+            </td>
+            <td className="py-3 text-[var(--text-primary)]">
+              {order.type.toUpperCase()}
+            </td>
+            <td className="py-3 text-[var(--text-primary)]">
+              {(Number(order.size) / 1000000).toFixed(2)} USDC
+            </td>
+            <td className="py-3 text-[var(--text-primary)]">
+              {order.fillPrice || order.limitPrice || '-'}
+            </td>
+            <td className="py-3">
+              <OrderStatusBadge status={order.status} />
+            </td>
+            <td className="py-3">
+              {order.txHash ? (
+                <a
+                  href={`https://sepolia.bscscan.com/tx/${order.txHash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[var(--accent-blue)] hover:underline"
+                >
+                  {order.txHash.slice(0, 10)}...{order.txHash.slice(-8)}
+                </a>
+              ) : (
+                <span className="text-[var(--text-secondary)]">-</span>
+              )}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function OrderStatusBadge({ status }: { status: string }) {
+  const statusColors: Record<string, string> = {
+    pending: 'bg-yellow-900/20 text-yellow-400',
+    open: 'bg-blue-900/20 text-blue-400',
+    filled: 'bg-green-900/20 text-green-400',
+    cancelled: 'bg-gray-800 text-gray-400',
+    rejected: 'bg-red-900/20 text-red-400',
+  };
+
+  return (
+    <span className={`px-2 py-1 rounded text-xs ${statusColors[status] || 'bg-gray-800 text-gray-400'}`}>
+      {status}
+    </span>
+  );
 }

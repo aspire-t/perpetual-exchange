@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import TransactionsPage from './page';
 import { useDeposits } from '../hooks/useDeposits';
 import { useWithdrawals } from '../hooks/useWithdrawals';
+import { useOrders } from '../hooks/useOrders';
 import { useAccount } from 'wagmi';
 
 jest.mock('../hooks/useDeposits', () => ({
@@ -17,6 +18,10 @@ jest.mock('wagmi', () => ({
   useAccount: jest.fn(),
 }));
 
+jest.mock('../hooks/useOrders', () => ({
+  useOrders: jest.fn(),
+}));
+
 describe('TransactionsPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -27,6 +32,11 @@ describe('TransactionsPage', () => {
       error: null,
     });
     (useWithdrawals as jest.Mock).mockReturnValue({
+      data: [],
+      isLoading: false,
+      error: null,
+    });
+    (useOrders as jest.Mock).mockReturnValue({
       data: [],
       isLoading: false,
       error: null,
@@ -132,5 +142,54 @@ describe('TransactionsPage', () => {
     render(<TransactionsPage />);
     fireEvent.click(screen.getByText('Withdrawals'));
     expect(screen.getByText('No withdrawals yet')).toBeInTheDocument();
+  });
+
+  it('should display orders table when data is loaded', () => {
+    (useOrders as jest.Mock).mockReturnValue({
+      data: [
+        {
+          id: '1',
+          userId: 'user1',
+          type: 'market',
+          side: 'long',
+          size: '1000000',
+          fillPrice: '50000',
+          status: 'filled',
+          txHash: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+          createdAt: '2026-03-12T10:00:00Z',
+        },
+      ],
+      isLoading: false,
+      error: null,
+    });
+
+    render(<TransactionsPage />);
+    fireEvent.click(screen.getByText('Orders'));
+    expect(screen.getByText('LONG')).toBeInTheDocument();
+    expect(screen.getByText('filled')).toBeInTheDocument();
+  });
+
+  it('should display loading state for orders', () => {
+    (useOrders as jest.Mock).mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      error: null,
+    });
+
+    render(<TransactionsPage />);
+    fireEvent.click(screen.getByText('Orders'));
+    expect(screen.getByText('Loading...')).toBeInTheDocument();
+  });
+
+  it('should display empty state when no orders', () => {
+    (useOrders as jest.Mock).mockReturnValue({
+      data: [],
+      isLoading: false,
+      error: null,
+    });
+
+    render(<TransactionsPage />);
+    fireEvent.click(screen.getByText('Orders'));
+    expect(screen.getByText('No orders yet')).toBeInTheDocument();
   });
 });
