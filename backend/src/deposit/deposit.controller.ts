@@ -1,9 +1,18 @@
 import { Controller, Post, Body } from '@nestjs/common';
+import { IsEthereumAddress, IsNotEmpty, IsString } from 'class-validator';
 import { DepositService } from './deposit.service';
 
 export class DepositDto {
+  @IsEthereumAddress()
+  @IsNotEmpty()
   address: string;
+
+  @IsString()
+  @IsNotEmpty()
   amount: string;
+
+  @IsString()
+  @IsNotEmpty()
   txHash: string;
 }
 

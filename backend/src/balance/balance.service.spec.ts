@@ -120,6 +120,7 @@ describe('BalanceService', () => {
           totalWithdrawals: '200',
           totalInPositions: '300',
           availableBalance: '500',
+          balance: '500',
         },
       });
     });
@@ -156,11 +157,12 @@ describe('BalanceService', () => {
           totalWithdrawals: '0',
           totalInPositions: '0',
           availableBalance: '0',
+          balance: '0',
         },
       });
     });
 
-    it('should return error when user not found', async () => {
+    it('should return zero balances when user not found (auto-creates user)', async () => {
       const address = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
 
       mockUserRepository.findOne.mockResolvedValue(null);
@@ -168,8 +170,14 @@ describe('BalanceService', () => {
       const result = await balanceService.getBalance(address);
 
       expect(result).toEqual({
-        success: false,
-        error: 'User not found',
+        success: true,
+        data: {
+          totalDeposits: '0',
+          totalWithdrawals: '0',
+          totalInPositions: '0',
+          availableBalance: '0',
+          balance: '0',
+        },
       });
     });
 
@@ -222,6 +230,7 @@ describe('BalanceService', () => {
           totalWithdrawals: '100',
           totalInPositions: '0',
           availableBalance: '400',
+          balance: '400',
         },
       });
     });

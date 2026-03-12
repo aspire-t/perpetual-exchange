@@ -1,8 +1,14 @@
 import { Controller, Post, Body } from '@nestjs/common';
+import { IsEthereumAddress, IsNotEmpty, IsString } from 'class-validator';
 import { FaucetService } from './faucet.service';
 
 export class MintDto {
+  @IsEthereumAddress()
+  @IsNotEmpty()
   address: string;
+
+  @IsString()
+  @IsNotEmpty()
   amount: string;
 }
 

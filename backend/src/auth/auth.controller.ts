@@ -1,9 +1,18 @@
 import { Controller, Post, Body, UnauthorizedException } from '@nestjs/common';
+import { IsEthereumAddress, IsNotEmpty, IsString } from 'class-validator';
 import { AuthService } from './auth.service';
 
 export class LoginDto {
+  @IsEthereumAddress()
+  @IsNotEmpty()
   address: string;
+
+  @IsString()
+  @IsNotEmpty()
   message: string;
+
+  @IsString()
+  @IsNotEmpty()
   signature: string;
 }
 

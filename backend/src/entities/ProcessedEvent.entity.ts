@@ -3,6 +3,7 @@ import {
   PrimaryColumn,
   Column,
   CreateDateColumn,
+  Index,
 } from 'typeorm';
 
 @Entity('processed_events')
@@ -13,9 +14,11 @@ export class ProcessedEvent {
   @Column()
   eventName: string;
 
+  @Index()
   @Column()
   blockNumber: number;
 
+  @Index()
   @Column()
   userId: string;
 

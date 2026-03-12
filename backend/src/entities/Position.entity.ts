@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   ManyToOne,
   JoinColumn,
+  Index,
 } from 'typeorm';
 import { User } from './User.entity';
 
@@ -13,6 +14,7 @@ export class Position {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Index()
   @Column()
   userId: string;
 
@@ -32,6 +34,7 @@ export class Position {
   @Column({ default: true })
   isLong: boolean;
 
+  @Index()
   @Column({ default: true })
   isOpen: boolean;
 

@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   ManyToOne,
   JoinColumn,
+  Index,
 } from 'typeorm';
 import { User } from './User.entity';
 
@@ -15,6 +16,7 @@ export class Deposit {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Index()
   @Column()
   userId: string;
 
@@ -25,6 +27,7 @@ export class Deposit {
   @Column('varchar', { default: '0' })
   amount: bigint;
 
+  @Index()
   @Column({ default: 'pending' })
   status: DepositStatus;
 

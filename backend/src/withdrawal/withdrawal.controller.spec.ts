@@ -21,7 +21,8 @@ describe('WithdrawalController', () => {
       ],
     }).compile();
 
-    withdrawalController = module.get<WithdrawalController>(WithdrawalController);
+    withdrawalController =
+      module.get<WithdrawalController>(WithdrawalController);
     withdrawalService = module.get<WithdrawalService>(WithdrawalService);
   });
 
@@ -80,6 +81,49 @@ describe('WithdrawalController', () => {
       mockWithdrawalService.withdraw.mockResolvedValue(expectedResult);
 
       const result = await withdrawalController.withdraw(withdrawalDto);
+
+      expect(result).toEqual(expectedResult);
+    });
+  });
+
+  describe('withdrawLegacy', () => {
+    it('should return success response on /withdrawal endpoint', async () => {
+      const withdrawalDto = {
+        address: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
+        amount: '1000000000000000000',
+      };
+      const expectedResult = {
+        success: true,
+        data: {
+          status: 'pending',
+          amount: withdrawalDto.amount,
+        },
+      };
+
+      mockWithdrawalService.withdraw.mockResolvedValue(expectedResult);
+
+      const result = await withdrawalController.withdrawLegacy(withdrawalDto);
+
+      expect(withdrawalService.withdraw).toHaveBeenCalledWith(
+        withdrawalDto.address,
+        withdrawalDto.amount,
+      );
+      expect(result).toEqual(expectedResult);
+    });
+
+    it('should return error when user not found on /withdrawal endpoint', async () => {
+      const withdrawalDto = {
+        address: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
+        amount: '1000000000000000000',
+      };
+      const expectedResult = {
+        success: false,
+        error: 'User not found',
+      };
+
+      mockWithdrawalService.withdraw.mockResolvedValue(expectedResult);
+
+      const result = await withdrawalController.withdrawLegacy(withdrawalDto);
 
       expect(result).toEqual(expectedResult);
     });

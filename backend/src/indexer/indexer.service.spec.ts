@@ -264,14 +264,14 @@ describe('IndexerService', () => {
       expect(result).toEqual({
         success: true,
         data: {
-          status: 'confirmed',
+          status: 'approved',
           amount: amount.toString(),
         },
       });
       expect(mockWithdrawalRepository.create).toHaveBeenCalledWith({
         user,
         amount,
-        status: 'confirmed',
+        status: 'approved',
         txHash,
       });
       expect(mockProcessedEventRepository.create).toHaveBeenCalledWith({

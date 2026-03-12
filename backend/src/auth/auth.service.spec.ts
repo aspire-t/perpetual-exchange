@@ -3,6 +3,7 @@ import { AuthService } from './auth.service';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../entities/User.entity';
+import { JwtService } from '@nestjs/jwt';
 import * as ethers from 'ethers';
 
 describe('AuthService', () => {
@@ -15,6 +16,10 @@ describe('AuthService', () => {
     save: jest.fn(),
   };
 
+  const mockJwtService = {
+    sign: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -22,6 +27,10 @@ describe('AuthService', () => {
         {
           provide: getRepositoryToken(User),
           useValue: mockUserRepository,
+        },
+        {
+          provide: JwtService,
+          useValue: mockJwtService,
         },
       ],
     }).compile();
@@ -97,12 +106,13 @@ describe('AuthService', () => {
       mockUserRepository.findOne.mockResolvedValue(null);
       mockUserRepository.create.mockReturnValue(newUser);
       mockUserRepository.save.mockResolvedValue(newUser);
+      mockJwtService.sign.mockReturnValue('mock-jwt-token');
 
       const result = await authService.login(address, message, signature);
 
       expect(mockUserRepository.create).toHaveBeenCalledWith({ address });
       expect(mockUserRepository.save).toHaveBeenCalledWith(newUser);
-      expect(result.token).toBeDefined();
+      expect(result.token).toBe('mock-jwt-token');
       expect(result.user.id).toBe('1');
     });
 
@@ -116,12 +126,13 @@ describe('AuthService', () => {
       const existingUser = { id: '1', address };
 
       mockUserRepository.findOne.mockResolvedValue(existingUser);
+      mockJwtService.sign.mockReturnValue('mock-jwt-token');
 
       const result = await authService.login(address, message, signature);
 
       expect(mockUserRepository.create).not.toHaveBeenCalled();
       expect(mockUserRepository.save).not.toHaveBeenCalled();
-      expect(result.token).toBeDefined();
+      expect(result.token).toBe('mock-jwt-token');
       expect(result.user.id).toBe('1');
     });
 

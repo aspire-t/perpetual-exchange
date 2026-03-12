@@ -19,12 +19,33 @@ export class BalanceService {
     private positionRepository: Repository<Position>,
   ) {}
 
-  async getBalance(
-    address: string,
-  ): Promise<{ success: boolean; data?: { totalDeposits: string; totalWithdrawals: string; totalInPositions: string; availableBalance: string }; error?: string }> {
-    const user = await this.userRepository.findOne({ where: { address } });
+  async getBalance(address: string): Promise<{
+    success: boolean;
+    data?: {
+      totalDeposits: string;
+      totalWithdrawals: string;
+      totalInPositions: string;
+      availableBalance: string;
+    };
+    error?: string;
+  }> {
+    // Normalize address to lowercase for consistent lookup
+    const normalizedAddress = address.toLowerCase();
+
+    const user = await this.userRepository.findOne({
+      where: { address: normalizedAddress },
+    });
     if (!user) {
-      return { success: false, error: 'User not found' };
+      // Return zero balances if user not found (no deposits/positions yet)
+      return {
+        success: true,
+        data: {
+          totalDeposits: '0',
+          totalWithdrawals: '0',
+          totalInPositions: '0',
+          availableBalance: '0',
+        },
+      };
     }
 
     // Calculate total deposits
@@ -55,7 +76,10 @@ export class BalanceService {
     const totalInPositions = positionResult.total || '0';
 
     // Available balance = deposits - withdrawals - positions
-    const availableBalance = BigInt(totalDeposits) - BigInt(totalWithdrawals) - BigInt(totalInPositions);
+    const availableBalance =
+      BigInt(totalDeposits) -
+      BigInt(totalWithdrawals) -
+      BigInt(totalInPositions);
 
     return {
       success: true,
@@ -64,6 +88,7 @@ export class BalanceService {
         totalWithdrawals,
         totalInPositions,
         availableBalance: availableBalance.toString(),
+        balance: availableBalance.toString(), // Alias for frontend compatibility
       },
     };
   }

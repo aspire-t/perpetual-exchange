@@ -1,6 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
+import { JwtService } from '@nestjs/jwt';
 import { User } from '../entities/User.entity';
 import * as ethers from 'ethers';
 
@@ -9,6 +10,7 @@ export class AuthService {
   constructor(
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    private jwtService: JwtService,
   ) {}
 
   async verifySignature(
@@ -40,8 +42,8 @@ export class AuthService {
       await this.userRepository.save(user);
     }
 
-    // Simple token generation - in production use JWT
-    const token = Buffer.from(`${user.id}:${Date.now()}`).toString('base64');
+    const payload = { sub: user.id, address: user.address };
+    const token = this.jwtService.sign(payload);
 
     return { token, user };
   }

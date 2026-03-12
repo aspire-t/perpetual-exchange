@@ -35,12 +35,13 @@ describe('BalanceController', () => {
           totalWithdrawals: '200',
           totalInPositions: '300',
           availableBalance: '500',
+          balance: '500', // Alias for frontend compatibility
         },
       };
 
       mockBalanceService.getBalance.mockResolvedValue(expectedResult);
 
-      const result = await balanceController.getBalance(address);
+      const result = await balanceController.getBalance({ address });
 
       expect(balanceService.getBalance).toHaveBeenCalledWith(address);
       expect(result).toEqual(expectedResult);
@@ -55,7 +56,44 @@ describe('BalanceController', () => {
 
       mockBalanceService.getBalance.mockResolvedValue(expectedResult);
 
-      const result = await balanceController.getBalance(address);
+      const result = await balanceController.getBalance({ address });
+
+      expect(result).toEqual(expectedResult);
+    });
+  });
+
+  describe('getBalanceByAddress', () => {
+    it('should return balance data using path parameter', async () => {
+      const address = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
+      const expectedResult = {
+        success: true,
+        data: {
+          totalDeposits: '1000',
+          totalWithdrawals: '200',
+          totalInPositions: '300',
+          availableBalance: '500',
+          balance: '500',
+        },
+      };
+
+      mockBalanceService.getBalance.mockResolvedValue(expectedResult);
+
+      const result = await balanceController.getBalanceByAddress(address);
+
+      expect(balanceService.getBalance).toHaveBeenCalledWith(address);
+      expect(result).toEqual(expectedResult);
+    });
+
+    it('should return error when user not found using path parameter', async () => {
+      const address = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
+      const expectedResult = {
+        success: false,
+        error: 'User not found',
+      };
+
+      mockBalanceService.getBalance.mockResolvedValue(expectedResult);
+
+      const result = await balanceController.getBalanceByAddress(address);
 
       expect(result).toEqual(expectedResult);
     });

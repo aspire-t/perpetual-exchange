@@ -31,7 +31,9 @@ export class IndexerService {
     skipped?: boolean;
     reason?: string;
   }> {
-    const user = await this.userRepository.findOne({ where: { address: userAddress } });
+    const user = await this.userRepository.findOne({
+      where: { address: userAddress },
+    });
     if (!user) {
       return { success: false, error: 'User not found' };
     }
@@ -100,7 +102,9 @@ export class IndexerService {
     skipped?: boolean;
     reason?: string;
   }> {
-    const user = await this.userRepository.findOne({ where: { address: userAddress } });
+    const user = await this.userRepository.findOne({
+      where: { address: userAddress },
+    });
     if (!user) {
       return { success: false, error: 'User not found' };
     }
@@ -120,7 +124,7 @@ export class IndexerService {
     const withdrawal = this.withdrawalRepository.create({
       user,
       amount,
-      status: 'confirmed',
+      status: 'approved',
       txHash,
     });
 
@@ -138,7 +142,7 @@ export class IndexerService {
     return {
       success: true,
       data: {
-        status: 'confirmed',
+        status: 'approved',
         amount: amount.toString(),
       },
     };

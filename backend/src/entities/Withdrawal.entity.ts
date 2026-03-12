@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   ManyToOne,
   JoinColumn,
+  Index,
 } from 'typeorm';
 import { User } from './User.entity';
 
@@ -19,6 +20,7 @@ export class Withdrawal {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Index()
   @Column()
   userId: string;
 
@@ -29,6 +31,7 @@ export class Withdrawal {
   @Column('varchar', { default: '0' })
   amount: bigint;
 
+  @Index()
   @Column({ default: 'pending' })
   status: WithdrawalStatus;
 
