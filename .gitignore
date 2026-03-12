@@ -130,3 +130,6 @@ dist/
 
 # Docker
 docker-data/
+
+# Git worktrees
+.worktrees/
