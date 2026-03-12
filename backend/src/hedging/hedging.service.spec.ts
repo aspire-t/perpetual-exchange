@@ -73,7 +73,18 @@ describe('HedgingService', () => {
     } as Position;
 
     it('should open a short hedge for a long position', async () => {
-      const mockHedge = {
+      jest.spyOn(positionRepository, 'findOne').mockResolvedValue(mockPosition);
+      jest.spyOn(hedgeRepository, 'findOne').mockResolvedValue(null);
+      jest.spyOn(hedgeRepository, 'create').mockImplementation(() => {
+        const hedge = {} as Hedge;
+        hedge.positionId = mockPosition.id;
+        hedge.size = mockPosition.size;
+        hedge.entryPrice = mockPosition.entryPrice;
+        hedge.isShort = mockPosition.isLong;
+        hedge.status = HedgeStatus.OPEN;
+        return hedge;
+      });
+      jest.spyOn(hedgeRepository, 'save').mockResolvedValue({
         id: 'hedge-1',
         positionId: mockPosition.id,
         size: mockPosition.size,
@@ -81,13 +92,7 @@ describe('HedgingService', () => {
         isShort: true,
         status: HedgeStatus.OPEN,
         createdAt: new Date(),
-      } as Hedge;
-
-      jest
-        .spyOn(positionRepository, 'findOne')
-        .mockResolvedValue(mockPosition);
-      jest.spyOn(hedgeRepository, 'create').mockReturnValue(mockHedge);
-      jest.spyOn(hedgeRepository, 'save').mockResolvedValue(mockHedge);
+      } as Hedge);
 
       const result = await hedgingService.openHedge(mockPosition.id);
 
@@ -107,7 +112,20 @@ describe('HedgingService', () => {
         createdAt: new Date(),
       } as Position;
 
-      const mockHedge = {
+      jest
+        .spyOn(positionRepository, 'findOne')
+        .mockResolvedValue(shortPosition);
+      jest.spyOn(hedgeRepository, 'findOne').mockResolvedValue(null);
+      jest.spyOn(hedgeRepository, 'create').mockImplementation(() => {
+        const hedge = {} as Hedge;
+        hedge.positionId = shortPosition.id;
+        hedge.size = shortPosition.size;
+        hedge.entryPrice = shortPosition.entryPrice;
+        hedge.isShort = shortPosition.isLong;
+        hedge.status = HedgeStatus.OPEN;
+        return hedge;
+      });
+      jest.spyOn(hedgeRepository, 'save').mockResolvedValue({
         id: 'hedge-2',
         positionId: shortPosition.id,
         size: shortPosition.size,
@@ -115,11 +133,7 @@ describe('HedgingService', () => {
         isShort: false,
         status: HedgeStatus.OPEN,
         createdAt: new Date(),
-      } as Hedge;
-
-      jest.spyOn(positionRepository, 'findOne').mockResolvedValue(shortPosition);
-      jest.spyOn(hedgeRepository, 'create').mockReturnValue(mockHedge);
-      jest.spyOn(hedgeRepository, 'save').mockResolvedValue(mockHedge);
+      } as Hedge);
 
       const result = await hedgingService.openHedge(shortPosition.id);
 
@@ -356,7 +370,18 @@ describe('HedgingService', () => {
     } as Position;
 
     it('should automatically open hedge when position is opened', async () => {
-      const mockHedge = {
+      jest.spyOn(positionRepository, 'findOne').mockResolvedValue(mockPosition);
+      jest.spyOn(hedgeRepository, 'findOne').mockResolvedValue(null);
+      jest.spyOn(hedgeRepository, 'create').mockImplementation(() => {
+        const hedge = {} as Hedge;
+        hedge.positionId = mockPosition.id;
+        hedge.size = mockPosition.size;
+        hedge.entryPrice = mockPosition.entryPrice;
+        hedge.isShort = mockPosition.isLong;
+        hedge.status = HedgeStatus.OPEN;
+        return hedge;
+      });
+      jest.spyOn(hedgeRepository, 'save').mockResolvedValue({
         id: 'hedge-1',
         positionId: mockPosition.id,
         size: mockPosition.size,
@@ -364,12 +389,7 @@ describe('HedgingService', () => {
         isShort: true,
         status: HedgeStatus.OPEN,
         createdAt: new Date(),
-      } as Hedge;
-
-      jest.spyOn(positionRepository, 'findOne').mockResolvedValue(mockPosition);
-      jest.spyOn(hedgeRepository, 'findOne').mockResolvedValue(null);
-      jest.spyOn(hedgeRepository, 'create').mockReturnValue(mockHedge);
-      jest.spyOn(hedgeRepository, 'save').mockResolvedValue(mockHedge);
+      } as Hedge);
 
       const result = await hedgingService.autoHedge(mockPosition.id);
 

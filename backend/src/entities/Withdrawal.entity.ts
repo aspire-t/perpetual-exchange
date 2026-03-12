@@ -29,7 +29,7 @@ export class Withdrawal {
   user: User;
 
   @Column('varchar', { default: '0' })
-  amount: bigint;
+  amount: string;
 
   @Index()
   @Column({ default: 'pending' })

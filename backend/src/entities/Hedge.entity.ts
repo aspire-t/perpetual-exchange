@@ -38,19 +38,19 @@ export class Hedge {
   status: HedgeStatus;
 
   @Column('varchar')
-  size: bigint;
+  size: string;
 
   @Column('varchar')
-  entryPrice: bigint;
+  entryPrice: string;
 
   @Column('varchar', { nullable: true })
-  exitPrice?: bigint;
+  exitPrice?: string;
 
   @Column({ default: false })
   isShort: boolean;
 
   @Column('varchar', { nullable: true })
-  pnl?: bigint;
+  pnl?: string;
 
   @Column({ nullable: true })
   hyperliquidOrderId?: string;

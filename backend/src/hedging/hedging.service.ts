@@ -40,13 +40,12 @@ export class HedgingService {
     }
 
     // Create opposite hedge: long position -> short hedge, short position -> long hedge
-    const hedge = this.hedgeRepository.create({
-      positionId,
-      size: position.size,
-      entryPrice: position.entryPrice,
-      isShort: !position.isLong, // Opposite side
-      status: HedgeStatus.OPEN,
-    });
+    const hedge = this.hedgeRepository.create();
+    hedge.positionId = positionId;
+    hedge.size = position.size;
+    hedge.entryPrice = position.entryPrice;
+    hedge.isShort = position.isLong;
+    hedge.status = HedgeStatus.OPEN;
 
     await this.hedgeRepository.save(hedge);
 
@@ -83,21 +82,21 @@ export class HedgingService {
     const priceResult = await this.priceService.getPrice('ETH');
     const currentPrice =
       priceResult.success && priceResult.data
-        ? BigInt(priceResult.data.price)
+        ? priceResult.data.price // Already a string
         : hedge.entryPrice;
 
-    // Calculate PnL
+    // Calculate PnL - convert strings to BigInt for calculation
     const pnl = this.calculateHedgePnL(
-      hedge.size,
-      hedge.entryPrice,
-      currentPrice,
+      BigInt(hedge.size),
+      BigInt(hedge.entryPrice),
+      BigInt(currentPrice),
       hedge.isShort,
     );
 
-    // Update hedge
+    // Update hedge - store as strings
     hedge.status = HedgeStatus.CLOSED;
-    hedge.exitPrice = currentPrice;
-    hedge.pnl = pnl;
+    hedge.exitPrice = currentPrice.toString();
+    hedge.pnl = pnl.toString();
     hedge.closedAt = new Date();
 
     await this.hedgeRepository.save(hedge);
@@ -130,12 +129,12 @@ export class HedgingService {
       data: {
         id: hedge.id,
         positionId: hedge.positionId,
-        size: hedge.size.toString(),
-        entryPrice: hedge.entryPrice.toString(),
-        exitPrice: hedge.exitPrice?.toString(),
+        size: hedge.size,
+        entryPrice: hedge.entryPrice,
+        exitPrice: hedge.exitPrice,
         isShort: hedge.isShort,
         status: hedge.status,
-        pnl: hedge.pnl?.toString(),
+        pnl: hedge.pnl,
         createdAt: hedge.createdAt,
         closedAt: hedge.closedAt,
       },
@@ -155,12 +154,12 @@ export class HedgingService {
       data: hedges.map((hedge) => ({
         id: hedge.id,
         positionId: hedge.positionId,
-        size: hedge.size.toString(),
-        entryPrice: hedge.entryPrice.toString(),
-        exitPrice: hedge.exitPrice?.toString(),
+        size: hedge.size,
+        entryPrice: hedge.entryPrice,
+        exitPrice: hedge.exitPrice,
         isShort: hedge.isShort,
         status: hedge.status,
-        pnl: hedge.pnl?.toString(),
+        pnl: hedge.pnl,
         createdAt: hedge.createdAt,
         closedAt: hedge.closedAt,
       })),

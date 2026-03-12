@@ -23,7 +23,7 @@ export class ProcessedEvent {
   userId: string;
 
   @Column('varchar', { default: '0' })
-  amount: bigint;
+  amount: string;
 
   @CreateDateColumn()
   createdAt: Date;

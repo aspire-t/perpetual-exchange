@@ -35,12 +35,11 @@ export class DepositService {
       return { success: false, error: 'Transaction already processed' };
     }
 
-    const deposit = this.depositRepository.create({
-      user,
-      amount: BigInt(amount),
-      txHash,
-      status: 'confirmed',
-    });
+    const deposit = this.depositRepository.create();
+    deposit.user = user;
+    deposit.amount = amount;
+    deposit.txHash = txHash;
+    deposit.status = 'confirmed';
 
     await this.depositRepository.save(deposit);
 

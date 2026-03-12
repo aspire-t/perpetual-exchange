@@ -23,13 +23,13 @@ export class Position {
   user: User;
 
   @Column('varchar', { default: '0' })
-  size: bigint;
+  size: string;
 
   @Column('varchar', { default: '0' })
-  entryPrice: bigint;
+  entryPrice: string;
 
   @Column('varchar', { nullable: true })
-  exitPrice?: bigint;
+  exitPrice?: string;
 
   @Column({ default: true })
   isLong: boolean;
@@ -39,7 +39,7 @@ export class Position {
   isOpen: boolean;
 
   @Column('varchar', { nullable: true })
-  pnl?: bigint;
+  pnl?: string;
 
   @Column({ nullable: true })
   closedAt?: Date;

@@ -62,20 +62,18 @@ export class IndexerService {
       };
     }
 
-    const deposit = this.depositRepository.create({
-      user,
-      amount,
-      txHash,
-      status: 'confirmed',
-    });
+    const deposit = this.depositRepository.create();
+    deposit.user = user;
+    deposit.amount = amount.toString();
+    deposit.txHash = txHash;
+    deposit.status = 'confirmed';
 
-    const processedEvent = this.processedEventRepository.create({
-      eventTxHash: txHash,
-      eventName: 'Deposit',
-      blockNumber,
-      userId: user.id,
-      amount,
-    });
+    const processedEvent = this.processedEventRepository.create();
+    processedEvent.eventTxHash = txHash;
+    processedEvent.eventName = 'Deposit';
+    processedEvent.blockNumber = blockNumber;
+    processedEvent.userId = user.id;
+    processedEvent.amount = amount.toString();
 
     await this.depositRepository.save(deposit);
     await this.processedEventRepository.save(processedEvent);
@@ -121,20 +119,18 @@ export class IndexerService {
       };
     }
 
-    const withdrawal = this.withdrawalRepository.create({
-      user,
-      amount,
-      status: 'approved',
-      txHash,
-    });
+    const withdrawal = this.withdrawalRepository.create();
+    withdrawal.user = user;
+    withdrawal.amount = amount.toString();
+    withdrawal.status = 'approved';
+    withdrawal.txHash = txHash;
 
-    const processedEvent = this.processedEventRepository.create({
-      eventTxHash: txHash,
-      eventName: 'Withdraw',
-      blockNumber,
-      userId: user.id,
-      amount,
-    });
+    const processedEvent = this.processedEventRepository.create();
+    processedEvent.eventTxHash = txHash;
+    processedEvent.eventName = 'Withdraw';
+    processedEvent.blockNumber = blockNumber;
+    processedEvent.userId = user.id;
+    processedEvent.amount = amount.toString();
 
     await this.withdrawalRepository.save(withdrawal);
     await this.processedEventRepository.save(processedEvent);

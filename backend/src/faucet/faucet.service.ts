@@ -44,13 +44,11 @@ export class FaucetService {
       }
     }
 
-    // Create a deposit record (mock minting)
-    const deposit = this.depositRepository.create({
-      user,
-      amount: BigInt(amount),
-      txHash: `0x faucet-mint-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      status: 'confirmed',
-    });
+    const deposit = this.depositRepository.create();
+    deposit.user = user;
+    deposit.amount = amount;
+    deposit.txHash = `0x faucet-mint-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    deposit.status = 'confirmed';
 
     await this.depositRepository.save(deposit);
 

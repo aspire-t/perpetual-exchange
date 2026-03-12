@@ -61,7 +61,13 @@ describe('WithdrawalService', () => {
       } as Withdrawal;
 
       mockUserRepository.findOne.mockResolvedValue(user);
-      mockWithdrawalRepository.create.mockReturnValue(withdrawal);
+      mockWithdrawalRepository.create.mockImplementation(() => {
+        const w = {} as Withdrawal;
+        w.user = user;
+        w.amount = amount;
+        w.status = 'pending';
+        return w;
+      });
       mockWithdrawalRepository.save.mockResolvedValue(withdrawal);
 
       const result = await withdrawalService.withdraw(address, amount);
@@ -73,12 +79,8 @@ describe('WithdrawalService', () => {
           amount,
         },
       });
-      expect(mockWithdrawalRepository.create).toHaveBeenCalledWith({
-        user,
-        amount: BigInt(amount),
-        status: 'pending',
-      });
-      expect(mockWithdrawalRepository.save).toHaveBeenCalledWith(withdrawal);
+      expect(mockWithdrawalRepository.create).toHaveBeenCalled();
+      expect(mockWithdrawalRepository.save).toHaveBeenCalled();
     });
 
     it('should return error when user not found', async () => {

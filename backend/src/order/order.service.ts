@@ -44,15 +44,14 @@ export class OrderService {
       await this.userRepository.save(user);
     }
 
-    // Create order
-    const order = this.orderRepository.create({
-      userId: user.id,
-      type,
-      side,
-      size,
-      limitPrice,
-      status: OrderStatus.PENDING,
-    });
+    // Create order - use strings for SQLite bigint compatibility
+    const order = this.orderRepository.create();
+    order.userId = user.id;
+    order.type = type;
+    order.side = side;
+    order.size = size.toString();
+    order.limitPrice = limitPrice?.toString();
+    order.status = OrderStatus.PENDING;
 
     await this.orderRepository.save(order);
 

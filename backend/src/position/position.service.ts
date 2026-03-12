@@ -40,14 +40,13 @@ export class PositionService {
       await this.userRepository.save(user);
     }
 
-    // Create position
-    const position = this.positionRepository.create({
-      userId: user.id,
-      size,
-      entryPrice,
-      isLong,
-      isOpen: true,
-    });
+    // Create position - use strings for SQLite bigint compatibility
+    const position = this.positionRepository.create();
+    position.userId = user.id;
+    position.size = size.toString();
+    position.entryPrice = entryPrice.toString();
+    position.isLong = isLong;
+    position.isOpen = true;
 
     await this.positionRepository.save(position);
 
@@ -84,21 +83,21 @@ export class PositionService {
     const priceResult = await this.priceService.getPrice('ETH');
     const currentPrice =
       priceResult.success && priceResult.data
-        ? BigInt(priceResult.data.price)
+        ? priceResult.data.price // Already a string
         : position.entryPrice;
 
-    // Calculate PnL
+    // Calculate PnL - convert strings to BigInt for calculation
     const pnl = this.calculatePnL(
-      position.size,
-      position.entryPrice,
-      currentPrice,
+      BigInt(position.size),
+      BigInt(position.entryPrice),
+      BigInt(currentPrice),
       position.isLong,
     );
 
-    // Update position
+    // Update position - store as strings
     position.isOpen = false;
-    position.exitPrice = currentPrice;
-    position.pnl = pnl;
+    position.exitPrice = currentPrice.toString();
+    position.pnl = pnl.toString();
     position.closedAt = new Date();
 
     await this.positionRepository.save(position);
@@ -108,8 +107,8 @@ export class PositionService {
       data: {
         id: position.id,
         isOpen: position.isOpen,
-        exitPrice: position.exitPrice.toString(),
-        pnl: position.pnl.toString(),
+        exitPrice: position.exitPrice,
+        pnl: position.pnl,
         closedAt: position.closedAt,
       },
     };
@@ -131,12 +130,12 @@ export class PositionService {
       data: {
         id: position.id,
         userId: position.userId,
-        size: position.size.toString(),
-        entryPrice: position.entryPrice.toString(),
-        exitPrice: position.exitPrice?.toString(),
+        size: position.size,
+        entryPrice: position.entryPrice,
+        exitPrice: position.exitPrice,
         isLong: position.isLong,
         isOpen: position.isOpen,
-        pnl: position.pnl?.toString(),
+        pnl: position.pnl,
         createdAt: position.createdAt,
         closedAt: position.closedAt,
       },
@@ -169,12 +168,12 @@ export class PositionService {
       data: positions.map((position) => ({
         id: position.id,
         userId: position.userId,
-        size: position.size.toString(),
-        entryPrice: position.entryPrice.toString(),
-        exitPrice: position.exitPrice?.toString(),
+        size: position.size,
+        entryPrice: position.entryPrice,
+        exitPrice: position.exitPrice,
         isLong: position.isLong,
         isOpen: position.isOpen,
-        pnl: position.pnl?.toString(),
+        pnl: position.pnl,
         createdAt: position.createdAt,
         closedAt: position.closedAt,
       })),

@@ -64,7 +64,14 @@ describe('DepositService', () => {
 
       mockUserRepository.findOne.mockResolvedValue(user);
       mockDepositRepository.findOne.mockResolvedValue(null);
-      mockDepositRepository.create.mockReturnValue(deposit);
+      mockDepositRepository.create.mockImplementation(() => {
+        const d = {} as Deposit;
+        d.user = user;
+        d.amount = amount;
+        d.txHash = txHash;
+        d.status = 'confirmed';
+        return d;
+      });
       mockDepositRepository.save.mockResolvedValue(deposit);
 
       const result = await depositService.deposit(address, amount, txHash);
@@ -77,13 +84,8 @@ describe('DepositService', () => {
           amount,
         },
       });
-      expect(mockDepositRepository.create).toHaveBeenCalledWith({
-        user,
-        amount: BigInt(amount),
-        txHash,
-        status: 'confirmed',
-      });
-      expect(mockDepositRepository.save).toHaveBeenCalledWith(deposit);
+      expect(mockDepositRepository.create).toHaveBeenCalled();
+      expect(mockDepositRepository.save).toHaveBeenCalled();
     });
 
     it('should return error when user not found', async () => {

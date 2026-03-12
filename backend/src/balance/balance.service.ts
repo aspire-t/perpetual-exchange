@@ -26,6 +26,7 @@ export class BalanceService {
       totalWithdrawals: string;
       totalInPositions: string;
       availableBalance: string;
+      balance: string;
     };
     error?: string;
   }> {
@@ -44,6 +45,7 @@ export class BalanceService {
           totalWithdrawals: '0',
           totalInPositions: '0',
           availableBalance: '0',
+          balance: '0',
         },
       };
     }

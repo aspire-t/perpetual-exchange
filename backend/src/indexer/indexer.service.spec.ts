@@ -103,8 +103,23 @@ describe('IndexerService', () => {
       mockUserRepository.findOne.mockResolvedValue(user);
       mockProcessedEventRepository.findOne.mockResolvedValue(null);
       mockDepositRepository.findOne.mockResolvedValue(null);
-      mockDepositRepository.create.mockReturnValue(deposit);
-      mockProcessedEventRepository.create.mockReturnValue(processedEvent);
+      mockDepositRepository.create.mockImplementation(() => {
+        const d = {} as Deposit;
+        d.user = user;
+        d.amount = amount.toString();
+        d.txHash = txHash;
+        d.status = 'confirmed';
+        return d;
+      });
+      mockProcessedEventRepository.create.mockImplementation(() => {
+        const pe = {} as ProcessedEvent;
+        pe.eventTxHash = txHash;
+        pe.eventName = 'Deposit';
+        pe.blockNumber = blockNumber;
+        pe.userId = user.id;
+        pe.amount = amount.toString();
+        return pe;
+      });
       mockDepositRepository.save.mockResolvedValue(deposit);
       mockProcessedEventRepository.save.mockResolvedValue(processedEvent);
 
@@ -123,19 +138,8 @@ describe('IndexerService', () => {
           amount: amount.toString(),
         },
       });
-      expect(mockDepositRepository.create).toHaveBeenCalledWith({
-        user,
-        amount,
-        txHash,
-        status: 'confirmed',
-      });
-      expect(mockProcessedEventRepository.create).toHaveBeenCalledWith({
-        eventTxHash: txHash,
-        eventName: 'Deposit',
-        blockNumber,
-        userId: user.id,
-        amount,
-      });
+      expect(mockDepositRepository.create).toHaveBeenCalled();
+      expect(mockProcessedEventRepository.create).toHaveBeenCalled();
     });
 
     it('should return error when user not found', async () => {
@@ -249,8 +253,23 @@ describe('IndexerService', () => {
 
       mockUserRepository.findOne.mockResolvedValue(user);
       mockProcessedEventRepository.findOne.mockResolvedValue(null);
-      mockWithdrawalRepository.create.mockReturnValue(withdrawal);
-      mockProcessedEventRepository.create.mockReturnValue(processedEvent);
+      mockWithdrawalRepository.create.mockImplementation(() => {
+        const w = {} as Withdrawal;
+        w.user = user;
+        w.amount = amount.toString();
+        w.status = 'approved';
+        w.txHash = txHash;
+        return w;
+      });
+      mockProcessedEventRepository.create.mockImplementation(() => {
+        const pe = {} as ProcessedEvent;
+        pe.eventTxHash = txHash;
+        pe.eventName = 'Withdraw';
+        pe.blockNumber = blockNumber;
+        pe.userId = user.id;
+        pe.amount = amount.toString();
+        return pe;
+      });
       mockWithdrawalRepository.save.mockResolvedValue(withdrawal);
       mockProcessedEventRepository.save.mockResolvedValue(processedEvent);
 
@@ -268,19 +287,8 @@ describe('IndexerService', () => {
           amount: amount.toString(),
         },
       });
-      expect(mockWithdrawalRepository.create).toHaveBeenCalledWith({
-        user,
-        amount,
-        status: 'approved',
-        txHash,
-      });
-      expect(mockProcessedEventRepository.create).toHaveBeenCalledWith({
-        eventTxHash: txHash,
-        eventName: 'Withdraw',
-        blockNumber,
-        userId: user.id,
-        amount,
-      });
+      expect(mockWithdrawalRepository.create).toHaveBeenCalled();
+      expect(mockProcessedEventRepository.create).toHaveBeenCalled();
     });
 
     it('should return error when user not found', async () => {

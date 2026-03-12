@@ -37,11 +37,10 @@ export class WithdrawalService {
       };
     }
 
-    const withdrawal = this.withdrawalRepository.create({
-      user,
-      amount: BigInt(amount),
-      status: 'pending',
-    });
+    const withdrawal = this.withdrawalRepository.create();
+    withdrawal.user = user;
+    withdrawal.amount = amount;
+    withdrawal.status = 'pending';
 
     await this.withdrawalRepository.save(withdrawal);
 

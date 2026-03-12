@@ -54,13 +54,13 @@ export class Order {
   side: OrderSide;
 
   @Column('varchar')
-  size: bigint;
+  size: string;
 
   @Column('varchar', { nullable: true })
-  limitPrice?: bigint;
+  limitPrice?: string;
 
   @Column('varchar', { nullable: true })
-  fillPrice?: bigint;
+  fillPrice?: string;
 
   @Index()
   @Column({
