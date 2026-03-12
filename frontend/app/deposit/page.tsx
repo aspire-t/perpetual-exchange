@@ -3,19 +3,43 @@
 import { useState } from 'react';
 import { useAccount } from 'wagmi';
 import { Navigation } from '../components/Navigation';
+import { useUSDCBalance } from '../hooks/useUSDCBalance';
+import { useVaultAllowance } from '../hooks/useVaultAllowance';
+import { useApprove } from '../hooks/useApprove';
+import { useDeposit } from '../hooks/useDeposit';
 
 export default function DepositPage() {
   const { isConnected, address } = useAccount();
-  const [copied, setCopied] = useState(false);
+  const [amount, setAmount] = useState('');
 
-  // Vault address for deposits
-  const VAULT_ADDRESS = '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb';
+  // Read contract state
+  const { data: balance } = useUSDCBalance(address);
+  const { data: allowance } = useVaultAllowance(address);
 
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(VAULT_ADDRESS);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  // Write contract state
+  const { approve, hash: approveHash, isConfirming: isApproving, isConfirmed: isApproveConfirmed, error: approveError } = useApprove();
+  const { deposit, hash: depositHash, isConfirming: isDepositing, isConfirmed: isDepositConfirmed, error: depositError } = useDeposit();
+
+  const handleMaxClick = () => {
+    if (balance) {
+      setAmount((Number(balance) / 1000000).toString());
+    }
   };
+
+  const handleApprove = async () => {
+    const amountWei = BigInt(Math.floor(parseFloat(amount) * 1000000)); // 6 decimals
+    await approve(amountWei);
+  };
+
+  const handleDeposit = async () => {
+    const amountWei = BigInt(Math.floor(parseFloat(amount) * 1000000)); // 6 decimals
+    await deposit(amountWei);
+  };
+
+  const amountWei = amount && parseFloat(amount) > 0 ? BigInt(Math.floor(parseFloat(amount) * 1000000)) : BigInt(0);
+  const isApproved = allowance && amountWei && allowance >= amountWei;
+  const isApproveDisabled = !amount || parseFloat(amount) <= 0 || (allowance && allowance >= amountWei);
+  const isDepositDisabled = !amount || parseFloat(amount) <= 0 || !isApproved;
 
   if (!isConnected) {
     return (
@@ -40,60 +64,104 @@ export default function DepositPage() {
           Deposit USDC
         </h1>
 
-        {/* Vault Address Card */}
+        {/* Balance Card */}
         <div className="bg-[var(--background-secondary)] border border-[var(--border-default)] rounded-lg p-6 mb-6">
-          <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-4">
-            Vault Address
-          </h2>
-
-          <div className="mb-6">
-            <p className="text-sm text-[var(--text-secondary)] mb-3">
-              Send USDC to the following address:
-            </p>
-            <div className="flex items-center gap-2">
-              <code className="flex-1 px-3 py-2.5 bg-[var(--background-tertiary)] border border-[var(--border-default)] rounded text-sm font-mono text-[var(--text-primary)] break-all">
-                {VAULT_ADDRESS}
-              </code>
-              <button
-                onClick={handleCopy}
-                className="px-4 py-2.5 bg-[var(--accent-blue)] text-white font-semibold rounded hover:bg-[var(--accent-blue-hover)] transition-colors text-sm whitespace-nowrap"
-              >
-                {copied ? 'Copied!' : 'Copy'}
-              </button>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-sm text-[var(--text-secondary)] mb-1">Available Balance</p>
+              <p className="text-xl font-semibold text-[var(--text-primary)]">
+                {balance ? `${(Number(balance) / 1000000).toFixed(2)} USDC` : '0.00 USDC'}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-[var(--text-secondary)] mb-1">Vault Allowance</p>
+              <p className="text-xl font-semibold text-[var(--text-primary)]">
+                {allowance ? `${(Number(allowance) / 1000000).toFixed(2)} USDC` : '0.00 USDC'}
+              </p>
             </div>
           </div>
+        </div>
 
-          {/* Warning */}
-          <div className="bg-[var(--warning-yellow-muted)] border border-[var(--warning-yellow)] rounded-lg p-4">
-            <p className="text-[var(--warning-yellow)] text-sm">
-              <strong>Important:</strong> Only send USDC tokens to this address. Sending any other
-              assets may result in permanent loss.
+        {/* Deposit Form */}
+        <div className="bg-[var(--background-secondary)] border border-[var(--border-default)] rounded-lg p-6 mb-6">
+          <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
+            Deposit Amount
+          </label>
+          <div className="flex gap-2 mb-4">
+            <input
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="0.00"
+              className="flex-1 px-4 py-3 bg-[var(--background-tertiary)] border border-[var(--border-default)] rounded text-[var(--text-primary)] text-lg"
+              min="0"
+              step="0.01"
+            />
+            <button
+              onClick={handleMaxClick}
+              className="px-4 py-2 bg-[var(--accent-blue)] text-white rounded hover:bg-[var(--accent-blue-hover)] transition-colors"
+            >
+              Max
+            </button>
+          </div>
+          <span className="text-xs text-[var(--text-secondary)]">Enter amount in USDC</span>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="space-y-4">
+          {/* Approve Button */}
+          <button
+            onClick={handleApprove}
+            disabled={isApproveDisabled || isApproving || isApproveConfirmed}
+            className={`w-full py-4 rounded-lg font-semibold transition-colors ${
+              isApproveDisabled
+                ? 'bg-[var(--background-tertiary)] text-[var(--text-secondary)] cursor-not-allowed'
+                : isApproving
+                  ? 'bg-[var(--accent-blue)]/50 text-white cursor-wait'
+                  : isApproveConfirmed
+                    ? 'bg-green-600 text-white'
+                    : 'bg-[var(--accent-blue)] text-white hover:bg-[var(--accent-blue-hover)]'
+            }`}
+          >
+            {isApproving ? 'Approving...' : isApproveConfirmed ? '✓ Approved' : `Approve ${amount || '0'} USDC`}
+          </button>
+
+          {/* Deposit Button */}
+          <button
+            onClick={handleDeposit}
+            disabled={isDepositDisabled || isDepositing || isDepositConfirmed}
+            className={`w-full py-4 rounded-lg font-semibold transition-colors ${
+              isDepositDisabled
+                ? 'bg-[var(--background-tertiary)] text-[var(--text-secondary)] cursor-not-allowed'
+                : isDepositing
+                  ? 'bg-[var(--accent-green)]/50 text-white cursor-wait'
+                  : isDepositConfirmed
+                    ? 'bg-green-600 text-white'
+                    : 'bg-[var(--accent-green)] text-white hover:bg-[var(--accent-green-hover)]'
+            }`}
+          >
+            {isDepositing ? 'Depositing...' : isDepositConfirmed ? '✓ Deposited' : `Deposit ${amount || '0'} USDC`}
+          </button>
+        </div>
+
+        {/* Error Messages */}
+        {(approveError || depositError) && (
+          <div className="mt-4 p-4 bg-red-900/20 border border-red-900 rounded-lg">
+            <p className="text-red-400 text-sm">
+              {approveError?.message || depositError?.message}
             </p>
           </div>
-        </div>
+        )}
 
-        {/* How to Deposit */}
-        <div className="bg-[var(--background-secondary)] border border-[var(--border-default)] rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">
-            How to Deposit
-          </h3>
-          <ol className="space-y-3">
-            {[
-              'Copy the vault address above',
-              'Go to your wallet or exchange and initiate a USDC transfer',
-              'Paste the vault address as the recipient',
-              'Enter the amount of USDC you want to deposit',
-              'Confirm the transaction and wait for it to be processed',
-            ].map((step, index) => (
-              <li key={index} className="flex gap-3">
-                <span className="flex-shrink-0 w-6 h-6 bg-[var(--accent-blue)] text-white rounded-full flex items-center justify-center text-xs font-semibold">
-                  {index + 1}
-                </span>
-                <span className="text-[var(--text-secondary)]">{step}</span>
-              </li>
-            ))}
-          </ol>
-        </div>
+        {/* Transaction Status */}
+        {(isApproving || isDepositing || isApproveConfirmed || isDepositConfirmed) && (
+          <div className="mt-4 p-4 bg-[var(--background-tertiary)] rounded-lg">
+            {isApproving && <p className="text-[var(--text-secondary)]">Waiting for approval confirmation...</p>}
+            {isDepositing && <p className="text-[var(--text-secondary)]">Waiting for deposit confirmation...</p>}
+            {isApproveConfirmed && <p className="text-green-400">✓ Approval confirmed! You can now deposit.</p>}
+            {isDepositConfirmed && <p className="text-green-400">✓ Deposit successful!</p>}
+          </div>
+        )}
       </main>
     </div>
   );

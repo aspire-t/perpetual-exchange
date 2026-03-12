@@ -2,13 +2,19 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /**
  * @title Vault
  * @dev Minimal vault contract for perpetual exchange
- * Handles deposits, withdrawals, and position management
+ * Handles USDC deposits, withdrawals, and position management
  */
 contract Vault is Ownable {
+    using SafeERC20 for IERC20;
+
+    // USDC token address
+    IERC20 public usdc;
     // Events
     event Deposit(address indexed user, uint256 amount);
     event Withdraw(address indexed user, uint256 amount);
@@ -48,43 +54,48 @@ contract Vault is Ownable {
     mapping(address => Position) public positions;
 
     /**
-     * @dev Constructor sets the deployer as owner
+     * @dev Constructor sets the deployer as owner and USDC address
+     * @param usdcAddress Address of the USDC token contract
      */
-    constructor() Ownable(msg.sender) {}
+    constructor(address usdcAddress) Ownable(msg.sender) {
+        usdc = IERC20(usdcAddress);
+    }
 
     /**
-     * @dev Accept ETH deposits
+     * @dev Deposit USDC tokens into the vault
+     * @param amount Amount to deposit (in smallest units, i.e., 6 decimals)
      */
-    receive() external payable {
-        deposits[msg.sender] += msg.value;
-        emit Deposit(msg.sender, msg.value);
+    function deposit(uint256 amount) external {
+        require(amount > 0, "Amount must be > 0");
+        usdc.safeTransferFrom(msg.sender, address(this), amount);
+        deposits[msg.sender] += amount;
+        emit Deposit(msg.sender, amount);
     }
 
     /**
      * @dev Withdraw user's deposit
-     * @param amount Amount to withdraw
+     * @param amount Amount to withdraw (in smallest units, i.e., 6 decimals)
      */
     function withdraw(uint256 amount) external {
+        require(amount > 0, "Amount must be > 0");
         require(deposits[msg.sender] >= amount, "Insufficient deposit");
-        require(address(this).balance >= amount, "Vault balance insufficient");
+        require(usdc.balanceOf(address(this)) >= amount, "Vault balance insufficient");
 
         deposits[msg.sender] -= amount;
-        (bool success,) = payable(msg.sender).call{value: amount}("");
-        require(success, "Withdraw failed");
+        usdc.safeTransfer(msg.sender, amount);
 
         emit Withdraw(msg.sender, amount);
     }
 
     /**
-     * @dev Owner can withdraw ETH from vault
+     * @dev Owner can withdraw USDC from vault
      * @param to Recipient address
-     * @param amount Amount to withdraw
+     * @param amount Amount to withdraw (in smallest units, i.e., 6 decimals)
      */
-    function withdrawEther(address to, uint256 amount) external onlyOwner {
-        require(address(this).balance >= amount, "Vault balance insufficient");
+    function withdrawUSDC(address to, uint256 amount) external onlyOwner {
+        require(usdc.balanceOf(address(this)) >= amount, "Vault balance insufficient");
 
-        (bool success,) = payable(to).call{value: amount}("");
-        require(success, "Withdraw failed");
+        usdc.safeTransfer(to, amount);
     }
 
     /**
@@ -196,11 +207,11 @@ contract Vault is Ownable {
     }
 
     /**
-     * @dev Get vault balance
-     * @return Current vault balance in wei
+     * @dev Get vault USDC balance
+     * @return Current vault USDC balance (in smallest units, i.e., 6 decimals)
      */
     function getBalance() external view returns (uint256) {
-        return address(this).balance;
+        return usdc.balanceOf(address(this));
     }
 
     /**

@@ -9,11 +9,8 @@ test.describe('Trading Page', () => {
   });
 
   test('should display trade interface after wallet connection', async ({ page }) => {
-    await page.goto('/trade');
-
-    // Mock the wallet connection by intercepting the account request
+    // Mock the wallet connection by injecting ethereum provider before page loads
     await page.addInitScript(() => {
-      // Inject a mock ethereum provider
       (window as any).ethereum = {
         isMetaMask: true,
         request: async ({ method }: { method: string }) => {
@@ -33,20 +30,16 @@ test.describe('Trading Page', () => {
       };
     });
 
-    await page.reload();
+    await page.goto('/trade');
+    await page.waitForTimeout(500);
 
-    // Click connect wallet
-    await page.getByRole('button', { name: 'Connect Wallet' }).click();
-    await page.waitForTimeout(1000);
-
-    await expect(page.locator('text=Trade Perpetual Futures')).toBeVisible();
-    await expect(page.locator('text=ETH Price')).toBeVisible();
-    await expect(page.locator('text=Position Size (USDC)')).toBeVisible();
+    // Wallet should be auto-connected, verify trade interface is visible
+    await expect(page.getByRole('heading', { name: 'Trade Perpetual Futures' })).toBeVisible();
+    await expect(page.getByText('ETH Price')).toBeVisible();
+    await expect(page.getByLabel('Position Size (USDC)')).toBeVisible();
   });
 
   test('should allow entering position size', async ({ page }) => {
-    await page.goto('/trade');
-
     // Mock the wallet connection
     await page.addInitScript(() => {
       (window as any).ethereum = {
@@ -68,9 +61,8 @@ test.describe('Trading Page', () => {
       };
     });
 
-    await page.reload();
-    await page.getByRole('button', { name: 'Connect Wallet' }).click();
-    await page.waitForTimeout(1000);
+    await page.goto('/trade');
+    await page.waitForTimeout(500);
 
     const sizeInput = page.locator('input#size');
     await sizeInput.fill('100');
@@ -78,8 +70,6 @@ test.describe('Trading Page', () => {
   });
 
   test('should display Long and Short buttons', async ({ page }) => {
-    await page.goto('/trade');
-
     // Mock the wallet connection
     await page.addInitScript(() => {
       (window as any).ethereum = {
@@ -101,17 +91,14 @@ test.describe('Trading Page', () => {
       };
     });
 
-    await page.reload();
-    await page.getByRole('button', { name: 'Connect Wallet' }).click();
-    await page.waitForTimeout(1000);
+    await page.goto('/trade');
+    await page.waitForTimeout(500);
 
     await expect(page.locator('button:has-text("Long")')).toBeVisible();
     await expect(page.locator('button:has-text("Short")')).toBeVisible();
   });
 
   test('should show validation error for invalid size', async ({ page }) => {
-    await page.goto('/trade');
-
     // Mock the wallet connection
     await page.addInitScript(() => {
       (window as any).ethereum = {
@@ -133,9 +120,8 @@ test.describe('Trading Page', () => {
       };
     });
 
-    await page.reload();
-    await page.getByRole('button', { name: 'Connect Wallet' }).click();
-    await page.waitForTimeout(1000);
+    await page.goto('/trade');
+    await page.waitForTimeout(500);
 
     const sizeInput = page.locator('input#size');
     await sizeInput.fill('-1');
