@@ -1,0 +1,45 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: perp-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: perpetual_exchange
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - perp-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Hardhat Node (Local Ethereum Testnet)
+  hardhat-node:
+    image: node:20-alpine
+    container_name: perp-hardhat-node
+    working_dir: /app
+    command: npx hardhat node --hostname 0.0.0.0
+    ports:
+      - "8545:8545"
+    volumes:
+      - ./contracts:/app
+    networks:
+      - perp-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8545 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  perp-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
