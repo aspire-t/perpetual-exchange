@@ -13,6 +13,7 @@ export function Navigation() {
     { href: '/positions', label: 'Positions' },
     { href: '/deposit', label: 'Deposit' },
     { href: '/withdraw', label: 'Withdraw' },
+    { href: '/transactions', label: 'History' },
   ];
 
   return (
