@@ -1,4 +1,4 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param } from '@nestjs/common';
 import { IsEthereumAddress, IsNotEmpty, IsString } from 'class-validator';
 import { DepositService } from './deposit.service';
 
@@ -27,5 +27,10 @@ export class DepositController {
       depositDto.amount,
       depositDto.txHash,
     );
+  }
+
+  @Get('user/:address')
+  async getUserDeposits(@Param('address') address: string) {
+    return await this.depositService.getUserDeposits(address);
   }
 }

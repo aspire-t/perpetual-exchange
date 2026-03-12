@@ -52,4 +52,35 @@ export class DepositService {
       },
     };
   }
+
+  async getUserDeposits(
+    userAddress: string,
+  ): Promise<{ success: boolean; data?: any[]; error?: string }> {
+    const normalizedAddress = userAddress.toLowerCase();
+
+    const user = await this.userRepository.findOne({
+      where: { address: normalizedAddress },
+    });
+
+    if (!user) {
+      return { success: true, data: [] };
+    }
+
+    const deposits = await this.depositRepository.find({
+      where: { userId: user.id },
+      order: { createdAt: 'DESC' },
+    });
+
+    return {
+      success: true,
+      data: deposits.map((deposit) => ({
+        id: deposit.id,
+        userId: deposit.userId,
+        amount: deposit.amount,
+        status: deposit.status,
+        txHash: deposit.txHash,
+        createdAt: deposit.createdAt,
+      })),
+    };
+  }
 }

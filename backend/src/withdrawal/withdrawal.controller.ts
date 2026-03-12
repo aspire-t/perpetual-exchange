@@ -1,4 +1,4 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param } from '@nestjs/common';
 import { IsEthereumAddress, IsNotEmpty, IsString } from 'class-validator';
 import { WithdrawalService } from './withdrawal.service';
 
@@ -31,5 +31,10 @@ export class WithdrawalController {
       withdrawalDto.address,
       withdrawalDto.amount,
     );
+  }
+
+  @Get('user/:address')
+  async getUserWithdrawals(@Param('address') address: string) {
+    return await this.withdrawalService.getUserWithdrawals(address);
   }
 }

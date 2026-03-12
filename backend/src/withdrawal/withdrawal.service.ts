@@ -52,4 +52,35 @@ export class WithdrawalService {
       },
     };
   }
+
+  async getUserWithdrawals(
+    userAddress: string,
+  ): Promise<{ success: boolean; data?: any[]; error?: string }> {
+    const normalizedAddress = userAddress.toLowerCase();
+
+    const user = await this.userRepository.findOne({
+      where: { address: normalizedAddress },
+    });
+
+    if (!user) {
+      return { success: true, data: [] };
+    }
+
+    const withdrawals = await this.withdrawalRepository.find({
+      where: { user: { id: user.id } },
+      order: { createdAt: 'DESC' },
+    });
+
+    return {
+      success: true,
+      data: withdrawals.map((withdrawal) => ({
+        id: withdrawal.id,
+        userId: withdrawal.userId,
+        amount: withdrawal.amount,
+        status: withdrawal.status,
+        txHash: withdrawal.txHash,
+        createdAt: withdrawal.createdAt,
+      })),
+    };
+  }
 }
