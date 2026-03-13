@@ -29,6 +29,18 @@ export class User {
   @Column({ default: 'user' })
   role: UserRole;
 
+  @Column('varchar', { default: '0' })
+  balance: string;
+
+  @Column('varchar', { default: '0' })
+  unrealizedPnl: string;
+
+  @Column({ nullable: true })
+  lastNonce?: string;
+
+  @Column({ nullable: true })
+  nonceExpiresAt?: Date;
+
   @OneToMany(() => Position, (position) => position.user)
   positions: Position[];
 

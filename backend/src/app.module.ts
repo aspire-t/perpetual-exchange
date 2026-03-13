@@ -20,7 +20,10 @@ import { Position } from './entities/Position.entity';
 import { ProcessedEvent } from './entities/ProcessedEvent.entity';
 import { Order } from './entities/Order.entity';
 import { Hedge } from './entities/Hedge.entity';
+import { FundingRate } from './entities/FundingRate.entity';
 import { HedgingModule } from './hedging/hedging.module';
+import { FundingRateModule } from './funding/funding-rate.module';
+import { RiskEngineModule } from './risk/risk-engine.module';
 
 @Module({
   imports: [
@@ -46,6 +49,7 @@ import { HedgingModule } from './hedging/hedging.module';
           ProcessedEvent,
           Order,
           Hedge,
+          FundingRate,
         ],
         synchronize: configService.get('NODE_ENV') !== 'production',
       }),
@@ -61,6 +65,8 @@ import { HedgingModule } from './hedging/hedging.module';
     PriceModule,
     PositionModule,
     HedgingModule,
+    FundingRateModule,
+    RiskEngineModule,
   ],
   controllers: [AppController],
   providers: [AppService],

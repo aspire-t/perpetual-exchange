@@ -44,6 +44,15 @@ export class Position {
   @Column({ nullable: true })
   closedAt?: Date;
 
+  @Column('varchar', { default: '0' })
+  leverage: string;
+
+  @Column('varchar', { default: '0' })
+  fundingPaid: string;
+
+  @Column({ nullable: true })
+  liquidationPrice?: string;
+
   @CreateDateColumn()
   createdAt: Date;
 }

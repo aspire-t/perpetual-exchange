@@ -5,12 +5,14 @@ import { HedgingService } from './hedging.service';
 import { Hedge, HedgeStatus } from '../entities/Hedge.entity';
 import { Position } from '../entities/Position.entity';
 import { PriceService } from '../price/price.service';
+import { HyperliquidClient } from './hyperliquid.client';
 
 describe('HedgingService', () => {
   let hedgingService: HedgingService;
   let hedgeRepository: Repository<Hedge>;
   let positionRepository: Repository<Position>;
   let priceService: PriceService;
+  let hyperliquidClient: HyperliquidClient;
 
   const mockHedgeRepository = () => ({
     create: jest.fn(),
@@ -29,6 +31,13 @@ describe('HedgingService', () => {
     getPrice: jest.fn(),
   };
 
+  const mockHyperliquidClient = {
+    placeOrder: jest.fn(),
+    closePosition: jest.fn(),
+    getPosition: jest.fn(),
+    getAccountInfo: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -45,6 +54,10 @@ describe('HedgingService', () => {
           provide: PriceService,
           useValue: mockPriceService,
         },
+        {
+          provide: HyperliquidClient,
+          useValue: mockHyperliquidClient,
+        },
       ],
     }).compile();
 
@@ -54,6 +67,7 @@ describe('HedgingService', () => {
       getRepositoryToken(Position),
     );
     priceService = module.get<PriceService>(PriceService);
+    hyperliquidClient = module.get<HyperliquidClient>(HyperliquidClient);
   });
 
   afterEach(() => {
@@ -81,16 +95,25 @@ describe('HedgingService', () => {
         hedge.size = mockPosition.size;
         hedge.entryPrice = mockPosition.entryPrice;
         hedge.isShort = mockPosition.isLong;
-        hedge.status = HedgeStatus.OPEN;
+        hedge.status = HedgeStatus.PENDING;
         return hedge;
+      });
+      jest.spyOn(hyperliquidClient, 'placeOrder').mockResolvedValue({
+        success: true,
+        data: {
+          orderId: 'mock-order-123',
+          status: 'filled',
+          price: '2000000000',
+        },
       });
       jest.spyOn(hedgeRepository, 'save').mockResolvedValue({
         id: 'hedge-1',
         positionId: mockPosition.id,
         size: mockPosition.size,
-        entryPrice: mockPosition.entryPrice,
+        entryPrice: BigInt('2000000000'),
         isShort: true,
         status: HedgeStatus.OPEN,
+        hyperliquidOrderId: 'mock-order-123',
         createdAt: new Date(),
       } as Hedge);
 
@@ -122,16 +145,25 @@ describe('HedgingService', () => {
         hedge.size = shortPosition.size;
         hedge.entryPrice = shortPosition.entryPrice;
         hedge.isShort = shortPosition.isLong;
-        hedge.status = HedgeStatus.OPEN;
+        hedge.status = HedgeStatus.PENDING;
         return hedge;
+      });
+      jest.spyOn(hyperliquidClient, 'placeOrder').mockResolvedValue({
+        success: true,
+        data: {
+          orderId: 'mock-order-456',
+          status: 'filled',
+          price: '1800000000',
+        },
       });
       jest.spyOn(hedgeRepository, 'save').mockResolvedValue({
         id: 'hedge-2',
         positionId: shortPosition.id,
         size: shortPosition.size,
-        entryPrice: shortPosition.entryPrice,
+        entryPrice: BigInt('1800000000'),
         isShort: false,
         status: HedgeStatus.OPEN,
+        hyperliquidOrderId: 'mock-order-456',
         createdAt: new Date(),
       } as Hedge);
 
@@ -182,6 +214,10 @@ describe('HedgingService', () => {
       const exitPrice = BigInt('1900000000'); // Price went down, short hedge profits
 
       jest.spyOn(hedgeRepository, 'findOne').mockResolvedValue(mockOpenHedge);
+      jest.spyOn(hyperliquidClient, 'closePosition').mockResolvedValue({
+        success: true,
+        data: { orderId: 'close-order-123' },
+      });
       jest.spyOn(priceService, 'getPrice').mockResolvedValue({
         success: true,
         data: { coin: 'ETH', price: exitPrice.toString() },
@@ -378,16 +414,25 @@ describe('HedgingService', () => {
         hedge.size = mockPosition.size;
         hedge.entryPrice = mockPosition.entryPrice;
         hedge.isShort = mockPosition.isLong;
-        hedge.status = HedgeStatus.OPEN;
+        hedge.status = HedgeStatus.PENDING;
         return hedge;
+      });
+      jest.spyOn(hyperliquidClient, 'placeOrder').mockResolvedValue({
+        success: true,
+        data: {
+          orderId: 'mock-order-789',
+          status: 'filled',
+          price: '2000000000',
+        },
       });
       jest.spyOn(hedgeRepository, 'save').mockResolvedValue({
         id: 'hedge-1',
         positionId: mockPosition.id,
         size: mockPosition.size,
-        entryPrice: mockPosition.entryPrice,
+        entryPrice: BigInt('2000000000'),
         isShort: true,
         status: HedgeStatus.OPEN,
+        hyperliquidOrderId: 'mock-order-789',
         createdAt: new Date(),
       } as Hedge);
 
@@ -413,6 +458,147 @@ describe('HedgingService', () => {
       expect(result.error).toContain('Hedge already exists');
       expect(hedgeRepository.create).not.toHaveBeenCalled();
       expect(hedgeRepository.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('syncHedgeStatus', () => {
+    const mockHedge = {
+      id: 'hedge-1',
+      positionId: 'position-1',
+      size: BigInt('1000000000000000000'),
+      entryPrice: BigInt('2000000000'),
+      isShort: true,
+      status: HedgeStatus.OPEN,
+      createdAt: new Date(),
+    } as Hedge;
+
+    it('should sync hedge status with Hyperliquid', async () => {
+      const mockHlPosition = {
+        entryPx: '2100000000',
+        unrealizedPnl: '100000000',
+        liquidationPx: '1800000000',
+      };
+
+      jest.spyOn(hedgeRepository, 'findOne').mockResolvedValue(mockHedge);
+      jest.spyOn(hyperliquidClient, 'getPosition').mockResolvedValue({
+        success: true,
+        data: mockHlPosition,
+      });
+      jest.spyOn(hedgeRepository, 'save').mockResolvedValue({
+        ...mockHedge,
+        entryPrice: BigInt('2100000000'),
+        pnl: '100000000',
+      } as Hedge);
+
+      const result = await hedgingService.syncHedgeStatus('hedge-1');
+
+      expect(result.success).toBe(true);
+      expect(result.data?.synced).toBe(true);
+      expect(result.data?.entryPrice).toBe('2100000000');
+      expect(hyperliquidClient.getPosition).toHaveBeenCalledWith('ETH');
+    });
+
+    it('should return error when hedge not found', async () => {
+      jest.spyOn(hedgeRepository, 'findOne').mockResolvedValue(null);
+
+      const result = await hedgingService.syncHedgeStatus('non-existent-id');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Hedge not found');
+    });
+
+    it('should return synced=false when hedge is already closed', async () => {
+      const closedHedge = { ...mockHedge, status: HedgeStatus.CLOSED } as Hedge;
+      jest.spyOn(hedgeRepository, 'findOne').mockResolvedValue(closedHedge);
+
+      const result = await hedgingService.syncHedgeStatus('hedge-1');
+
+      expect(result.success).toBe(true);
+      expect(result.data?.synced).toBe(false);
+      expect(result.data?.reason).toBe('Already closed');
+    });
+
+    it('should return error when Hyperliquid API fails', async () => {
+      jest.spyOn(hedgeRepository, 'findOne').mockResolvedValue(mockHedge);
+      jest.spyOn(hyperliquidClient, 'getPosition').mockResolvedValue({
+        success: false,
+        error: 'API error',
+      });
+
+      const result = await hedgingService.syncHedgeStatus('hedge-1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('API error');
+    });
+
+    it('should handle sync failure gracefully', async () => {
+      jest.spyOn(hedgeRepository, 'findOne').mockResolvedValue(mockHedge);
+      jest
+        .spyOn(hyperliquidClient, 'getPosition')
+        .mockRejectedValue(new Error('Network error'));
+
+      const result = await hedgingService.syncHedgeStatus('hedge-1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Failed to sync hedge status');
+    });
+  });
+
+  describe('getTotalHedgedVolume', () => {
+    const mockOpenHedges = [
+      {
+        id: 'hedge-1',
+        size: BigInt('1000000000000000000'),
+        status: HedgeStatus.OPEN,
+      } as Hedge,
+      {
+        id: 'hedge-2',
+        size: BigInt('500000000000000000'),
+        status: HedgeStatus.OPEN,
+      } as Hedge,
+    ];
+
+    it('should calculate total hedged volume for open hedges', async () => {
+      jest.spyOn(hedgeRepository, 'find').mockResolvedValue(mockOpenHedges);
+
+      const result = await hedgingService.getTotalHedgedVolume();
+
+      expect(result.success).toBe(true);
+      expect(result.data?.totalVolume).toBe('1500000000000000000');
+      expect(result.data?.openHedges).toBe(2);
+    });
+
+    it('should return zero volume when no open hedges exist', async () => {
+      jest.spyOn(hedgeRepository, 'find').mockResolvedValue([]);
+
+      const result = await hedgingService.getTotalHedgedVolume();
+
+      expect(result.success).toBe(true);
+      expect(result.data?.totalVolume).toBe('0');
+      expect(result.data?.openHedges).toBe(0);
+    });
+
+    it('should only count open hedges, not closed ones', async () => {
+      // The service queries with where: { status: HedgeStatus.OPEN }
+      // So the mock should return only open hedges
+      jest.spyOn(hedgeRepository, 'find').mockResolvedValue(mockOpenHedges);
+
+      const result = await hedgingService.getTotalHedgedVolume();
+
+      expect(result.success).toBe(true);
+      expect(result.data?.totalVolume).toBe('1500000000000000000');
+      expect(result.data?.openHedges).toBe(2);
+    });
+
+    it('should return error when database query fails', async () => {
+      jest
+        .spyOn(hedgeRepository, 'find')
+        .mockRejectedValue(new Error('Database error'));
+
+      const result = await hedgingService.getTotalHedgedVolume();
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Failed to calculate hedged volume');
     });
   });
 });

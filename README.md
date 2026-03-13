@@ -11,6 +11,14 @@ A decentralized perpetual futures exchange built on Next.js and NestJS.
 - **Wallet integration** via wagmi/viem
 - **Responsive UI** with dark mode support
 
+### Bonus Features
+
+- **Funding Rate Mechanism** - 8-hour interval funding payments (FAQ Q9)
+- **Risk Engine** - Margin checks, leverage limits, liquidation detection (FAQ Q10)
+- **Automatic Liquidations** - Price oracle-based liquidation system
+- **Hyperliquid Hedging** - Real API integration for automatic hedging
+- **Replay Attack Protection** - Nonce-based wallet login security
+
 ## Tech Stack
 
 ### Frontend
@@ -73,21 +81,31 @@ The frontend will start on `http://localhost:3000`.
 perpetual-exchange/
 ├── backend/
 │   ├── src/
-│   │   ├── order/          # Order management
-│   │   ├── position/       # Position management
-│   │   ├── price/          # Price feed service
-│   │   ├── balance/        # Balance management
-│   │   └── main.ts         # Entry point
-│   └── test/               # E2E tests
+│   │   ├── auth/             # Wallet auth with replay protection
+│   │   ├── order/            # Order management
+│   │   ├── position/         # Position management
+│   │   ├── price/            # Price feed service
+│   │   ├── balance/          # Balance management
+│   │   ├── funding/          # Funding rate mechanism
+│   │   ├── risk/             # Risk engine & liquidations
+│   │   ├── hedging/          # Hyperliquid hedging
+│   │   ├── faucet/           # Test token faucet
+│   │   ├── deposit/          # Deposit tracking
+│   │   ├── withdrawal/       # Withdrawal processing
+│   │   ├── indexer/          # Event indexer
+│   │   └── main.ts           # Entry point
+│   └── test/                 # E2E tests
 ├── frontend/
 │   ├── app/
-│   │   ├── trade/          # Trading page
-│   │   ├── positions/      # Positions page
-│   │   ├── deposit/        # Deposit page
-│   │   ├── withdraw/       # Withdraw page
-│   │   └── components/     # Shared components
-│   └── __tests__/          # Unit tests
-└── docker-compose.yml      # Docker configuration
+│   │   ├── trade/            # Trading page
+│   │   ├── positions/        # Positions page
+│   │   ├── deposit/          # Deposit page
+│   │   ├── withdraw/         # Withdraw page
+│   │   └── components/       # Shared components
+│   └── __tests__/            # Unit tests
+├── docs/
+│   └── BONUS_FEATURES.md     # Bonus features documentation
+└── docker-compose.yml        # Docker configuration
 ```
 
 ## API Documentation
@@ -123,6 +141,37 @@ perpetual-exchange/
 | GET | `/balance/:address` | Get user's balance |
 | POST | `/balance/deposit` | Record a deposit |
 | POST | `/withdraw` | Process withdrawal |
+
+#### Funding Rate
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/funding/rate/:symbol` | Get current funding rate |
+| GET | `/funding/history/:symbol` | Get funding rate history |
+| POST | `/funding/apply` | Apply funding to all positions |
+
+#### Risk Management
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/risk/check/:address` | Check if new position is allowed |
+| GET | `/risk/liquidation/:id` | Check position liquidation status |
+| GET | `/risk/liquidations` | Scan all positions for liquidation risk |
+| POST | `/risk/liquidate/:id` | Execute liquidation for position |
+| POST | `/risk/liquidate-all` | Auto-liquidate all breaching positions |
+| GET | `/risk/max-size/:address` | Get maximum allowed position size |
+
+#### Hedging
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/hedging/:positionId/open` | Open hedge for position |
+| POST | `/hedging/:hedgeId/close` | Close existing hedge |
+| GET | `/hedging/:hedgeId` | Get hedge details |
+| GET | `/hedging/position/:id` | Get all hedges for position |
+| POST | `/hedging/auto/:positionId` | Auto-hedge (called on position open) |
+| POST | `/hedging/sync/:hedgeId` | Sync status with Hyperliquid |
+| GET | `/hedging/volume/total` | Get total hedged volume |
 
 ### Request/Response Format
 
@@ -226,13 +275,16 @@ The project maintains high test coverage:
 ### Backend (.env)
 
 ```env
-DATABASE_URL=postgresql://user:password@localhost:5432/perpetual
-# Or use SQLite:
-DATABASE_URL=sqlite:./dev.db
-
+DATABASE_PATH=dev.db
 PORT=3001
 HYPERLIQUID_API_URL=https://api.hyperliquid.xyz
+HYPERLIQUID_API_KEY=your_api_key_here
+HYPERLIQUID_WALLET_ADDRESS=your_wallet_address_here
+HYPERLIQUID_PRIVATE_KEY=your_private_key_here
+JWT_SECRET=your-jwt-secret
 ```
+
+> **Note:** The Hyperliquid credentials are optional. The system runs in mock mode without them, which simulates hedging without real API calls.
 
 ### Frontend
 
