@@ -33,4 +33,16 @@ export class DepositController {
   async getUserDeposits(@Param('address') address: string) {
     return await this.depositService.getUserDeposits(address);
   }
+
+  /**
+   * Dev faucet - fund wallet with test USDC for development
+   * Only available in development environment
+   */
+  @Post('faucet')
+  async faucet(@Body() body: { address: string; amount?: string }) {
+    return await this.depositService.faucet(
+      body.address,
+      body.amount || '100000000', // 100 USDC (6 decimals)
+    );
+  }
 }

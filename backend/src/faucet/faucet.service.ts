@@ -17,9 +17,18 @@ export class FaucetService {
     address: string,
     amount: string,
   ): Promise<{ success: boolean; txHash?: string; error?: string }> {
-    const user = await this.userRepository.findOne({ where: { address } });
+    const normalizedAddress = address.toLowerCase();
+
+    // Find or create user
+    let user = await this.userRepository.findOne({
+      where: { address: normalizedAddress },
+    });
     if (!user) {
-      return { success: false, error: 'User not found' };
+      user = this.userRepository.create({
+        address: normalizedAddress,
+        balance: '0',
+      });
+      await this.userRepository.save(user);
     }
 
     // Check if user has minted in the last 24 hours
@@ -50,7 +59,12 @@ export class FaucetService {
     deposit.txHash = `0x faucet-mint-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     deposit.status = 'confirmed';
 
+    // Update user's balance
+    const currentBalance = BigInt(user.balance || '0');
+    user.balance = (currentBalance + BigInt(amount)).toString();
+
     await this.depositRepository.save(deposit);
+    await this.userRepository.save(user);
 
     return { success: true, txHash: deposit.txHash };
   }

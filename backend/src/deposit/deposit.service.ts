@@ -88,4 +88,55 @@ export class DepositService {
       })),
     };
   }
+
+  /**
+   * Dev faucet - fund wallet with test USDC for development
+   * Creates user if not exists and adds balance directly
+   */
+  async faucet(
+    address: string,
+    amount: string,
+  ): Promise<{
+    success: boolean;
+    data?: { address: string; amount: string; newBalance: string };
+    error?: string;
+  }> {
+    const normalizedAddress = address.toLowerCase();
+
+    // Find or create user
+    let user = await this.userRepository.findOne({
+      where: { address: normalizedAddress },
+    });
+
+    if (!user) {
+      user = this.userRepository.create({
+        address: normalizedAddress,
+        balance: '0',
+      });
+      await this.userRepository.save(user);
+    }
+
+    // Add balance directly
+    const currentBalance = BigInt(user.balance || '0');
+    const newBalance = currentBalance + BigInt(amount);
+    user.balance = newBalance.toString();
+    await this.userRepository.save(user);
+
+    // Create a faucet deposit record for tracking
+    const deposit = this.depositRepository.create();
+    deposit.user = user;
+    deposit.amount = amount;
+    deposit.txHash = `faucet-${Date.now()}`;
+    deposit.status = 'confirmed';
+    await this.depositRepository.save(deposit);
+
+    return {
+      success: true,
+      data: {
+        address: normalizedAddress,
+        amount,
+        newBalance: newBalance.toString(),
+      },
+    };
+  }
 }

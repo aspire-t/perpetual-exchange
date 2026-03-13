@@ -43,6 +43,46 @@ export default function TradePage() {
     refetchInterval: 5000,
   });
 
+  // Fetch user balance
+  const { data: balanceData } = useQuery({
+    queryKey: ['balance', address],
+    queryFn: async () => {
+      if (!address) return null;
+      const response = await fetch(`http://localhost:3001/balance/${address}`);
+      const data = await response.json();
+      if (!response.ok || (data.success === false)) {
+        throw new Error(data.error || 'Failed to fetch balance');
+      }
+      return data;
+    },
+    enabled: !!address,
+    refetchInterval: 5000,
+  });
+
+  // Faucet mutation
+  const faucetMutation = useMutation({
+    mutationFn: async () => {
+      if (!address) throw new Error('Wallet not connected');
+      const response = await fetch('/api/faucet/mint', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address, amount: '100000000' }), // 100 USDC
+      });
+      const data = await response.json();
+      if (!response.ok || (data.success === false)) {
+        throw new Error(data.error || 'Faucet failed');
+      }
+      return data;
+    },
+    onSuccess: () => {
+      toast.success('Minted 100 Mock USDC');
+      queryClient.invalidateQueries({ queryKey: ['balance', address] });
+    },
+    onError: (error: Error) => {
+      toast.error(`Faucet failed: ${error.message}`);
+    },
+  });
+
   // Submit order mutation
   const submitOrder = useMutation({
     mutationFn: async (orderData: OrderData) => {
@@ -131,7 +171,7 @@ export default function TradePage() {
         <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-6 items-start">
           {/* Left - Trading Panel */}
           <div className="lg:col-span-1 order-2 lg:order-1">
-            <TradeSection {...{ priceData, priceLoading, size, setSize, leverage, setLeverage, submitOrder, handleOrder, selectedSymbol, setSelectedSymbol }} />
+            <TradeSection {...{ priceData, priceLoading, balanceData, faucetMutation, size, setSize, leverage, setLeverage, submitOrder, handleOrder, selectedSymbol, setSelectedSymbol }} />
           </div>
 
           {/* Right - Transaction History & Charts (Placeholder) */}
@@ -160,6 +200,8 @@ interface PriceData {
 interface TradeSectionProps {
   priceData: PriceData | undefined;
   priceLoading: boolean;
+  balanceData: any;
+  faucetMutation: UseMutationResult<any, Error, void, unknown>;
   size: string;
   setSize: (size: string) => void;
   leverage: number;
@@ -170,12 +212,33 @@ interface TradeSectionProps {
   setSelectedSymbol: (symbol: string) => void;
 }
 
-function TradeSection({ priceData, priceLoading, size, setSize, leverage, setLeverage, submitOrder, handleOrder, selectedSymbol, setSelectedSymbol }: TradeSectionProps) {
+function TradeSection({ priceData, priceLoading, balanceData, faucetMutation, size, setSize, leverage, setLeverage, submitOrder, handleOrder, selectedSymbol, setSelectedSymbol }: TradeSectionProps) {
   return (
     <div className="bg-[var(--background-secondary)] border border-[var(--border-default)] rounded-xl p-5 shadow-sm sticky top-24">
       {/* Header */}
       <div className="mb-6">
-        <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-4">Place Order</h2>
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-lg font-semibold text-[var(--text-primary)]">Place Order</h2>
+          {/* Balance & Faucet */}
+          <div className="flex items-center gap-2">
+            <div className="text-right">
+              <div className="text-xs text-[var(--text-secondary)]">Available</div>
+              <div className="text-sm font-mono font-medium text-[var(--text-primary)]">
+                {balanceData?.success ? (Number(balanceData.data.availableBalance) / 1e6).toFixed(2) : '0.00'} USDC
+              </div>
+            </div>
+            <button
+              onClick={() => faucetMutation.mutate()}
+              disabled={faucetMutation.isPending}
+              className="p-1.5 text-[var(--accent-blue)] hover:bg-[var(--accent-blue-dim)] rounded-md transition-colors"
+              title="Mint 100 Mock USDC"
+            >
+              <svg className={`w-5 h-5 ${faucetMutation.isPending ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+            </button>
+          </div>
+        </div>
         <SymbolSelector
           symbols={AVAILABLE_SYMBOLS}
           selectedSymbol={selectedSymbol}

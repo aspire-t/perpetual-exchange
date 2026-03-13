@@ -12,6 +12,17 @@ A decentralized perpetual futures exchange built on Next.js and NestJS.
 - **Responsive UI** with dark mode support
 - **K-line charts** for technical analysis
 
+## Screenshots
+
+### Home Page
+![Home Page](image/home.png)
+
+### Trading Interface
+![Trading Interface](image/trade.png)
+
+### Wallet Connection
+![Wallet Connection](image/connect-wallet.png)
+
 ### Bonus Features
 
 - **Funding Rate Mechanism** - 8-hour interval funding payments between long/short positions
