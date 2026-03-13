@@ -2,10 +2,9 @@
 
 import { useState } from 'react';
 import { useAccount } from 'wagmi';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, UseMutationResult } from '@tanstack/react-query';
 import { Navigation } from '../components/Navigation';
 import { SymbolSelector } from '../components/SymbolSelector';
-import { KlineChart } from '../components/KlineChart';
 import toast from 'react-hot-toast';
 import { useDeposits } from '../hooks/useDeposits';
 import { useWithdrawals } from '../hooks/useWithdrawals';
@@ -93,10 +92,16 @@ export default function TradePage() {
     return (
       <div className="min-h-screen bg-[var(--background-primary)]">
         <Navigation />
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-          <div className="text-center">
-            <p className="text-xl text-[var(--text-secondary)]">
-              Connect your wallet to start trading
+        <main className="flex flex-col items-center justify-center min-h-[80vh] px-4">
+          <div className="text-center space-y-4">
+            <div className="w-16 h-16 bg-[var(--background-tertiary)] rounded-2xl flex items-center justify-center mx-auto mb-6">
+              <svg className="w-8 h-8 text-[var(--text-secondary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+            </div>
+            <h1 className="text-2xl font-bold text-[var(--text-primary)]">Connect Wallet</h1>
+            <p className="text-[var(--text-secondary)] max-w-md mx-auto">
+              Please connect your wallet to access the trading platform and manage your positions.
             </p>
           </div>
         </main>
@@ -105,30 +110,61 @@ export default function TradePage() {
   }
 
   return (
-    <div className="min-h-screen bg-[var(--background-primary)]">
+    <div className="min-h-screen bg-[var(--background-primary)] text-[var(--text-primary)] font-sans">
       <Navigation />
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Trade Section */}
-        <TradeSection {...{ priceData, priceLoading, size, setSize, leverage, setLeverage, submitOrder, handleOrder, selectedSymbol, setSelectedSymbol }} />
+      
+      <main className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* Header / Stats Bar */}
+        <header className="mb-6 flex items-center justify-between">
+           <div className="flex items-center gap-4">
+              <h1 className="text-2xl font-bold tracking-tight">Trade</h1>
+              <div className="h-6 w-px bg-[var(--border-default)]"></div>
+              <div className="flex items-baseline gap-2">
+                 <span className="text-[var(--text-secondary)] font-medium">{selectedSymbol}</span>
+                 <span className={`text-lg font-mono font-bold ${priceData?.success ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'}`}>
+                    {priceLoading ? 'Loading...' : priceData?.success ? `$${Number(priceData.data.price).toFixed(2)}` : '--'}
+                 </span>
+              </div>
+           </div>
+        </header>
 
-        {/* Divider */}
-        <hr className="border-t border-[var(--border-default)] my-8" />
+        <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-6 items-start">
+          {/* Left - Trading Panel */}
+          <div className="lg:col-span-1 order-2 lg:order-1">
+            <TradeSection {...{ priceData, priceLoading, size, setSize, leverage, setLeverage, submitOrder, handleOrder, selectedSymbol, setSelectedSymbol }} />
+          </div>
 
-        {/* History Section */}
-        <HistorySection {...{ historyTab, setHistoryTab, address }} />
+          {/* Right - Transaction History & Charts (Placeholder) */}
+          <div className="lg:col-span-1 order-1 lg:order-2 space-y-6">
+            {/* Chart Placeholder - Could be added later */}
+            {/* <div className="h-[400px] bg-[var(--background-secondary)] rounded-xl border border-[var(--border-default)] flex items-center justify-center text-[var(--text-muted)]">
+              Chart Placeholder
+            </div> */}
+
+            <HistorySection {...{ historyTab, setHistoryTab, address }} />
+          </div>
+        </div>
       </main>
     </div>
   );
 }
 
+interface PriceData {
+  success: boolean;
+  data: {
+    price: string;
+  };
+  error?: string;
+}
+
 interface TradeSectionProps {
-  priceData: any;
+  priceData: PriceData | undefined;
   priceLoading: boolean;
   size: string;
   setSize: (size: string) => void;
   leverage: number;
   setLeverage: (leverage: number) => void;
-  submitOrder: any;
+  submitOrder: UseMutationResult<unknown, Error, OrderData, unknown>;
   handleOrder: (side: 'Long' | 'Short') => void;
   selectedSymbol: string;
   setSelectedSymbol: (symbol: string) => void;
@@ -136,178 +172,94 @@ interface TradeSectionProps {
 
 function TradeSection({ priceData, priceLoading, size, setSize, leverage, setLeverage, submitOrder, handleOrder, selectedSymbol, setSelectedSymbol }: TradeSectionProps) {
   return (
-    <section>
-      <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-6 text-center">
-        Trade Perpetual Futures
-      </h1>
+    <div className="bg-[var(--background-secondary)] border border-[var(--border-default)] rounded-xl p-5 shadow-sm sticky top-24">
+      {/* Header */}
+      <div className="mb-6">
+        <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-4">Place Order</h2>
+        <SymbolSelector
+          symbols={AVAILABLE_SYMBOLS}
+          selectedSymbol={selectedSymbol}
+          onSymbolChange={setSelectedSymbol}
+        />
+      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Order Form - Left Column */}
-        <div className="lg:col-span-1 space-y-4">
-          {/* Symbol Selector */}
-          <SymbolSelector
-            symbols={AVAILABLE_SYMBOLS}
-            selectedSymbol={selectedSymbol}
-            onSymbolChange={setSelectedSymbol}
+      {/* Leverage Selector */}
+      <div className="mb-6">
+        <div className="flex justify-between items-center mb-2">
+          <label className="text-sm font-medium text-[var(--text-secondary)]">Leverage</label>
+          <span className="text-sm font-bold text-[var(--accent-blue)]">{leverage}x</span>
+        </div>
+        <div className="relative h-6 flex items-center">
+          <input
+            type="range"
+            min="1"
+            max="10"
+            step="1"
+            value={leverage}
+            onChange={(e) => setLeverage(Number(e.target.value))}
+            className="w-full h-1.5 bg-[var(--background-tertiary)] rounded-lg appearance-none cursor-pointer accent-[var(--accent-blue)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-blue-dim)]"
           />
+        </div>
+        <div className="flex justify-between text-xs text-[var(--text-muted)] mt-1">
+          <span>1x</span>
+          <span>5x</span>
+          <span>10x</span>
+        </div>
+      </div>
 
-          {/* Price Display */}
-          <div className="bg-[var(--background-secondary)] border border-[var(--border-default)] rounded-lg p-4">
-            <p className="text-sm text-[var(--text-secondary)] mb-1">{selectedSymbol} Price</p>
-            {priceLoading ? (
-              <p className="text-xl font-mono text-[var(--text-primary)]">Loading...</p>
-            ) : priceData?.success && priceData?.data?.price ? (
-              <p className="text-xl font-mono font-semibold text-[var(--text-primary)]">
-                ${Number(priceData.data.price).toFixed(2)}
-              </p>
-            ) : (
-              <p className="text-xl font-mono text-[var(--text-primary)]">--</p>
-            )}
-          </div>
-
-          {/* Leverage Selector */}
-          <div className="bg-[var(--background-secondary)] border border-[var(--border-default)] rounded-lg p-4">
-            <label htmlFor="leverage" className="block text-sm font-medium text-[var(--text-secondary)] mb-3">
-              Leverage: <span className="text-[var(--text-primary)] font-semibold">{leverage}x</span>
-            </label>
+      {/* Order Form */}
+      <div className="mb-6 space-y-4">
+        <div>
+          <label htmlFor="size" className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
+            Size
+          </label>
+          <div className="relative group">
             <input
-              id="leverage"
-              type="range"
-              min="1"
-              max="10"
-              value={leverage}
-              onChange={(e) => setLeverage(Number(e.target.value))}
-              className="w-full h-2 bg-[var(--background-tertiary)] rounded-lg appearance-none cursor-pointer accent-[var(--accent-blue)]"
+              id="size"
+              type="number"
+              value={size}
+              onChange={(e) => setSize(e.target.value)}
+              placeholder="0.00"
+              className="w-full pl-4 pr-16 py-3 bg-[var(--background-tertiary)] border border-[var(--border-default)] rounded-lg text-[var(--text-primary)] font-mono text-lg focus:outline-none focus:border-[var(--accent-blue)] focus:ring-1 focus:ring-[var(--accent-blue)] transition-colors placeholder-[var(--text-muted)]"
+              min="0"
+              step="0.01"
             />
-            <div className="flex justify-between text-xs text-[var(--text-muted)] mt-2">
-              <span>1x</span>
-              <span>5x</span>
-              <span>10x</span>
-            </div>
-          </div>
-
-          {/* Order Form */}
-          <div className="bg-[var(--background-secondary)] border border-[var(--border-default)] rounded-lg p-4">
-            <div className="mb-4">
-              <label htmlFor="size" className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
-                Position Size (USDC)
-              </label>
-              <input
-                id="size"
-                type="number"
-                value={size}
-                onChange={(e) => setSize(e.target.value)}
-                placeholder="0.00"
-                className="w-full px-3 py-2.5 border border-[var(--border-default)] rounded bg-[var(--background-tertiary)] text-[var(--text-primary)] font-mono text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent-blue)] focus:border-transparent placeholder-[var(--text-muted)]"
-                min="0"
-                step="0.01"
-              />
-              <p className="text-xs text-[var(--text-muted)] mt-1">
-                Margin required: {size ? (Number(size) / leverage).toFixed(2) : '0.00'} USDC ({leverage}x leverage)
-              </p>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={() => handleOrder('Long')}
-                disabled={submitOrder.isPending}
-                className="py-3 px-4 bg-[var(--success-green)] text-white font-semibold rounded hover:bg-[var(--success-green-bg)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-              >
-                {submitOrder.isPending ? 'Submitting...' : 'Long'}
-              </button>
-              <button
-                onClick={() => handleOrder('Short')}
-                disabled={submitOrder.isPending}
-                className="py-3 px-4 bg-[var(--danger-red)] text-white font-semibold rounded hover:bg-[var(--danger-red-bg)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-              >
-                {submitOrder.isPending ? 'Submitting...' : 'Short'}
-              </button>
+            <div className="absolute right-0 top-0 bottom-0 px-4 flex items-center pointer-events-none border-l border-[var(--border-default)] bg-[var(--background-elevated)] rounded-r-lg">
+              <span className="text-sm font-bold text-[var(--text-secondary)]">USDC</span>
             </div>
           </div>
         </div>
 
-        {/* Market Info - Right Column */}
-        <div className="lg:col-span-2 space-y-4">
-          {/* K-line Chart */}
-          <KlineChart symbol={selectedSymbol} timeframe="1h" />
-
-          {/* Market Stats - Only show if data exists */}
-          {priceData?.success && priceData?.data?.stats && (
-            <div className="bg-[var(--background-secondary)] border border-[var(--border-default)] rounded-lg p-4">
-              <h2 className="text-sm font-semibold text-[var(--text-secondary)] mb-3">Market Stats</h2>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {priceData.data.stats.volume24h && (
-                  <div>
-                    <p className="text-xs text-[var(--text-muted)] mb-1">24h Volume</p>
-                    <p className="text-sm font-mono text-[var(--text-primary)]">
-                      ${Number(priceData.data.stats.volume24h).toLocaleString()}
-                    </p>
-                  </div>
-                )}
-                {priceData.data.stats.change24h && (
-                  <div>
-                    <p className="text-xs text-[var(--text-muted)] mb-1">24h Change</p>
-                    <p className={`text-sm font-mono ${Number(priceData.data.stats.change24h) >= 0 ? 'text-[var(--success-green)]' : 'text-[var(--danger-red)]'}`}>
-                      {Number(priceData.data.stats.change24h) >= 0 ? '+' : ''}{Number(priceData.data.stats.change24h).toFixed(2)}%
-                    </p>
-                  </div>
-                )}
-                {priceData.data.stats.high24h && (
-                  <div>
-                    <p className="text-xs text-[var(--text-muted)] mb-1">24h High</p>
-                    <p className="text-sm font-mono text-[var(--text-primary)]">
-                      ${Number(priceData.data.stats.high24h).toLocaleString()}
-                    </p>
-                  </div>
-                )}
-                {priceData.data.stats.low24h && (
-                  <div>
-                    <p className="text-xs text-[var(--text-muted)] mb-1">24h Low</p>
-                    <p className="text-sm font-mono text-[var(--text-primary)]">
-                      ${Number(priceData.data.stats.low24h).toLocaleString()}
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Recent Trades - Only show if trades exist */}
-          {priceData?.success && priceData?.data?.recentTrades && priceData.data.recentTrades.length > 0 && (
-            <div className="bg-[var(--background-secondary)] border border-[var(--border-default)] rounded-lg p-4">
-              <h2 className="text-sm font-semibold text-[var(--text-secondary)] mb-3">Recent Trades</h2>
-              <div className="space-y-2">
-                {priceData.data.recentTrades.map((trade: any, index: number) => (
-                  <div key={index} className="flex justify-between text-sm">
-                    <span className={trade.side === 'buy' ? 'text-[var(--success-green)]' : 'text-[var(--danger-red)]'}>
-                      {trade.side.toUpperCase()}
-                    </span>
-                    <span className="text-[var(--text-primary)] font-mono">
-                      ${Number(trade.price).toLocaleString()}
-                    </span>
-                    <span className="text-[var(--text-secondary)]">
-                      {new Date(trade.timestamp).toLocaleTimeString()}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Info Card */}
-          <div className="bg-[var(--background-secondary)] border border-[var(--border-default)] rounded-lg p-4">
-            <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-2">
-              About Perpetual Futures
-            </h3>
-            <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-              Trade perpetual futures with no expiry. Your positions are automatically hedged on Hyperliquid
-              for risk management. Deposit USDC as collateral and trade with up to 10x leverage.
-            </p>
+        <div className="p-3 bg-[var(--background-tertiary)] rounded-lg border border-[var(--border-muted)] space-y-2">
+          <div className="flex justify-between text-xs">
+             <span className="text-[var(--text-secondary)]">Margin Required</span>
+             <span className="font-mono text-[var(--text-primary)]">{size ? (Number(size) / leverage).toFixed(2) : '0.00'} USDC</span>
+          </div>
+          <div className="flex justify-between text-xs">
+             <span className="text-[var(--text-secondary)]">Trading Fee</span>
+             <span className="font-mono text-[var(--text-primary)]">0.00 USDC</span>
           </div>
         </div>
       </div>
-    </section>
+
+      {/* Action Buttons */}
+      <div className="grid grid-cols-2 gap-3">
+        <button
+          onClick={() => handleOrder('Long')}
+          disabled={submitOrder.isPending}
+          className="relative w-full py-3 px-4 bg-[var(--success-green)] hover:bg-[var(--success-green-hover)] text-white rounded-lg font-bold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg hover:-translate-y-0.5"
+        >
+          {submitOrder.isPending ? 'Processing...' : 'Long'}
+        </button>
+        <button
+          onClick={() => handleOrder('Short')}
+          disabled={submitOrder.isPending}
+          className="relative w-full py-3 px-4 bg-[var(--danger-red)] hover:bg-[var(--danger-red-hover)] text-white rounded-lg font-bold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg hover:-translate-y-0.5"
+        >
+          {submitOrder.isPending ? 'Processing...' : 'Short'}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -318,51 +270,42 @@ interface HistorySectionProps {
 }
 
 function HistorySection({ historyTab, setHistoryTab, address }: HistorySectionProps) {
-  return (
-    <section>
-      <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-4">Transaction History</h2>
+  const tabs: { id: HistoryTabType; label: string }[] = [
+    { id: 'orders', label: 'Orders' },
+    { id: 'deposits', label: 'Deposits' },
+    { id: 'withdrawals', label: 'Withdrawals' },
+  ];
 
-      {/* Tab Navigation */}
-      <div className="flex gap-2 mb-6 border-b border-[var(--border-default)]">
-        <button
-          onClick={() => setHistoryTab('orders')}
-          className={`px-4 py-2 font-medium transition-colors ${
-            historyTab === 'orders'
-              ? 'text-[var(--accent-blue)] border-b-2 border-[var(--accent-blue)]'
-              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-          }`}
-        >
-          Orders
-        </button>
-        <button
-          onClick={() => setHistoryTab('deposits')}
-          className={`px-4 py-2 font-medium transition-colors ${
-            historyTab === 'deposits'
-              ? 'text-[var(--accent-blue)] border-b-2 border-[var(--accent-blue)]'
-              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-          }`}
-        >
-          Deposits
-        </button>
-        <button
-          onClick={() => setHistoryTab('withdrawals')}
-          className={`px-4 py-2 font-medium transition-colors ${
-            historyTab === 'withdrawals'
-              ? 'text-[var(--accent-blue)] border-b-2 border-[var(--accent-blue)]'
-              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-          }`}
-        >
-          Withdrawals
-        </button>
+  return (
+    <section className="bg-[var(--background-secondary)] border border-[var(--border-default)] rounded-xl overflow-hidden shadow-sm min-h-[500px]">
+      <div className="border-b border-[var(--border-default)] px-6">
+        <div className="flex gap-8">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setHistoryTab(tab.id)}
+              className={`py-4 text-sm font-medium border-b-2 transition-colors ${
+                historyTab === tab.id
+                  ? 'border-[var(--accent-blue)] text-[var(--accent-blue)]'
+                  : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Tab Content */}
-      {historyTab === 'orders' && <OrdersTab userAddress={address || ''} />}
-      {historyTab === 'deposits' && <DepositsTab userAddress={address || ''} />}
-      {historyTab === 'withdrawals' && <WithdrawalsTab userAddress={address || ''} />}
+      <div className="p-6">
+        {historyTab === 'orders' && <OrdersTab userAddress={address || ''} />}
+        {historyTab === 'deposits' && <DepositsTab userAddress={address || ''} />}
+        {historyTab === 'withdrawals' && <WithdrawalsTab userAddress={address || ''} />}
+      </div>
     </section>
   );
 }
+
+// ... Reusing the rest of the components but with improved table styles ...
 
 interface Deposit {
   id: string;
@@ -386,59 +329,53 @@ function DepositsTab({ userAddress }: { userAddress: string }) {
     goToPrevPage,
   } = useDeposits(userAddress);
 
-  if (isLoading) {
-    return <div className="text-[var(--text-secondary)]">Loading...</div>;
-  }
-
-  if (error) {
-    return <div className="text-red-400">Error: {error.message}</div>;
-  }
-
-  if (!deposits || deposits.length === 0) {
-    return <div className="text-[var(--text-secondary)]">No deposits yet</div>;
-  }
+  if (isLoading) return <LoadingState text="Loading deposits..." />;
+  if (error) return <ErrorState message={error.message} />;
+  if (!deposits || deposits.length === 0) return <EmptyState message="No deposits yet" />;
 
   return (
     <>
-      <table className="w-full">
-        <thead>
-          <tr className="text-left text-sm text-[var(--text-secondary)]">
-            <th className="pb-3">Time</th>
-            <th className="pb-3">Amount</th>
-            <th className="pb-3">Status</th>
-            <th className="pb-3">Transaction</th>
-          </tr>
-        </thead>
-        <tbody>
-          {deposits.map((deposit) => (
-            <tr key={deposit.id} className="border-t border-[var(--border-default)]">
-              <td className="py-3 text-[var(--text-primary)]">
-                {new Date(deposit.createdAt).toLocaleString()}
-              </td>
-              <td className="py-3 text-[var(--text-primary)]">
-                {(Number(deposit.amount) / 1000000).toFixed(2)} USDC
-              </td>
-              <td className="py-3">
-                <StatusBadge status={deposit.status} />
-              </td>
-              <td className="py-3">
-                {deposit.txHash ? (
-                  <a
-                    href={`https://sepolia.bscscan.com/tx/${deposit.txHash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[var(--accent-blue)] hover:underline"
-                  >
-                    {deposit.txHash.slice(0, 10)}...{deposit.txHash.slice(-8)}
-                  </a>
-                ) : (
-                  <span className="text-[var(--text-secondary)]">-</span>
-                )}
-              </td>
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider border-b border-[var(--border-muted)]">
+              <th className="pb-3 pl-2">Time</th>
+              <th className="pb-3">Amount</th>
+              <th className="pb-3">Status</th>
+              <th className="pb-3 pr-2 text-right">Transaction</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y divide-[var(--border-muted)]">
+            {deposits.map((deposit) => (
+              <tr key={deposit.id} className="group hover:bg-[var(--background-tertiary)] transition-colors">
+                <td className="py-3 pl-2 text-sm text-[var(--text-muted)] font-mono">
+                  {new Date(deposit.createdAt).toLocaleString()}
+                </td>
+                <td className="py-3 text-sm text-[var(--text-primary)] font-mono font-medium">
+                  {(Number(deposit.amount) / 1000000).toFixed(2)} USDC
+                </td>
+                <td className="py-3">
+                  <StatusBadge status={deposit.status} />
+                </td>
+                <td className="py-3 pr-2 text-right">
+                  {deposit.txHash ? (
+                    <a
+                      href={`https://sepolia.bscscan.com/tx/${deposit.txHash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[var(--accent-blue)] hover:text-[var(--accent-blue-hover)] hover:underline font-mono text-sm"
+                    >
+                      View
+                    </a>
+                  ) : (
+                    <span className="text-[var(--text-muted)] text-sm">-</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       <PaginationControls
         currentPage={currentPage}
         totalPages={totalPages}
@@ -452,14 +389,14 @@ function DepositsTab({ userAddress }: { userAddress: string }) {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const statusColors: Record<string, string> = {
-    pending: 'bg-yellow-900/20 text-yellow-400',
-    confirmed: 'bg-green-900/20 text-green-400',
-    failed: 'bg-red-900/20 text-red-400',
+  const styles: Record<string, string> = {
+    pending: 'bg-[var(--warning-yellow-dim)] text-[var(--warning-yellow)]',
+    confirmed: 'bg-[var(--success-green-dim)] text-[var(--success-green)]',
+    failed: 'bg-[var(--danger-red-dim)] text-[var(--danger-red)]',
   };
 
   return (
-    <span className={`px-2 py-1 rounded text-xs ${statusColors[status] || 'bg-gray-800 text-gray-400'}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium uppercase tracking-wide ${styles[status] || 'bg-[var(--background-elevated)] text-[var(--text-muted)]'}`}>
       {status}
     </span>
   );
@@ -478,59 +415,53 @@ function WithdrawalsTab({ userAddress }: { userAddress: string }) {
     goToPrevPage,
   } = useWithdrawals(userAddress);
 
-  if (isLoading) {
-    return <div className="text-[var(--text-secondary)]">Loading...</div>;
-  }
-
-  if (error) {
-    return <div className="text-red-400">Error: {error.message}</div>;
-  }
-
-  if (!withdrawals || withdrawals.length === 0) {
-    return <div className="text-[var(--text-secondary)]">No withdrawals yet</div>;
-  }
+  if (isLoading) return <LoadingState text="Loading withdrawals..." />;
+  if (error) return <ErrorState message={error.message} />;
+  if (!withdrawals || withdrawals.length === 0) return <EmptyState message="No withdrawals yet" />;
 
   return (
     <>
-      <table className="w-full">
-        <thead>
-          <tr className="text-left text-sm text-[var(--text-secondary)]">
-            <th className="pb-3">Time</th>
-            <th className="pb-3">Amount</th>
-            <th className="pb-3">Status</th>
-            <th className="pb-3">Transaction</th>
-          </tr>
-        </thead>
-        <tbody>
-          {withdrawals.map((withdrawal) => (
-            <tr key={withdrawal.id} className="border-t border-[var(--border-default)]">
-              <td className="py-3 text-[var(--text-primary)]">
-                {new Date(withdrawal.createdAt).toLocaleString()}
-              </td>
-              <td className="py-3 text-[var(--text-primary)]">
-                {(Number(withdrawal.amount) / 1000000).toFixed(2)} USDC
-              </td>
-              <td className="py-3">
-                <WithdrawalStatusBadge status={withdrawal.status} />
-              </td>
-              <td className="py-3">
-                {withdrawal.txHash ? (
-                  <a
-                    href={`https://sepolia.bscscan.com/tx/${withdrawal.txHash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[var(--accent-blue)] hover:underline"
-                  >
-                    {withdrawal.txHash.slice(0, 10)}...{withdrawal.txHash.slice(-8)}
-                  </a>
-                ) : (
-                  <span className="text-[var(--text-secondary)]">-</span>
-                )}
-              </td>
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider border-b border-[var(--border-muted)]">
+              <th className="pb-3 pl-2">Time</th>
+              <th className="pb-3">Amount</th>
+              <th className="pb-3">Status</th>
+              <th className="pb-3 pr-2 text-right">Transaction</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y divide-[var(--border-muted)]">
+            {withdrawals.map((withdrawal) => (
+              <tr key={withdrawal.id} className="group hover:bg-[var(--background-tertiary)] transition-colors">
+                <td className="py-3 pl-2 text-sm text-[var(--text-muted)] font-mono">
+                  {new Date(withdrawal.createdAt).toLocaleString()}
+                </td>
+                <td className="py-3 text-sm text-[var(--text-primary)] font-mono font-medium">
+                  {(Number(withdrawal.amount) / 1000000).toFixed(2)} USDC
+                </td>
+                <td className="py-3">
+                  <WithdrawalStatusBadge status={withdrawal.status} />
+                </td>
+                <td className="py-3 pr-2 text-right">
+                  {withdrawal.txHash ? (
+                    <a
+                      href={`https://sepolia.bscscan.com/tx/${withdrawal.txHash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[var(--accent-blue)] hover:text-[var(--accent-blue-hover)] hover:underline font-mono text-sm"
+                    >
+                      View
+                    </a>
+                  ) : (
+                    <span className="text-[var(--text-muted)] text-sm">-</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       <PaginationControls
         currentPage={currentPage}
         totalPages={totalPages}
@@ -544,16 +475,16 @@ function WithdrawalsTab({ userAddress }: { userAddress: string }) {
 }
 
 function WithdrawalStatusBadge({ status }: { status: string }) {
-  const statusColors: Record<string, string> = {
-    pending: 'bg-yellow-900/20 text-yellow-400',
-    approved: 'bg-blue-900/20 text-blue-400',
+  const styles: Record<string, string> = {
+    pending: 'bg-[var(--warning-yellow-dim)] text-[var(--warning-yellow)]',
+    approved: 'bg-[var(--accent-blue-dim)] text-[var(--accent-blue)]',
     processing: 'bg-purple-900/20 text-purple-400',
-    confirmed: 'bg-green-900/20 text-green-400',
-    rejected: 'bg-red-900/20 text-red-400',
+    confirmed: 'bg-[var(--success-green-dim)] text-[var(--success-green)]',
+    rejected: 'bg-[var(--danger-red-dim)] text-[var(--danger-red)]',
   };
 
   return (
-    <span className={`px-2 py-1 rounded text-xs ${statusColors[status] || 'bg-gray-800 text-gray-400'}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium uppercase tracking-wide ${styles[status] || 'bg-[var(--background-elevated)] text-[var(--text-muted)]'}`}>
       {status}
     </span>
   );
@@ -573,15 +504,9 @@ function OrdersTab({ userAddress }: { userAddress: string }) {
     goToPrevPage,
   } = useOrders(userAddress);
 
-  if (isLoading) {
-    return <div className="text-[var(--text-secondary)]">Loading...</div>;
-  }
+  if (isLoading) return <LoadingState text="Loading orders..." />;
+  if (error) return <ErrorState message={error.message} />;
 
-  if (error) {
-    return <div className="text-red-400">Error: {error.message}</div>;
-  }
-
-  // Client-side filtering
   const filteredOrders = orders?.filter(order => {
     if (filter === 'open') {
       return ['pending', 'open'].includes(order.status.toLowerCase());
@@ -592,97 +517,94 @@ function OrdersTab({ userAddress }: { userAddress: string }) {
 
   return (
     <>
-      {/* Sub-tabs for Orders */}
-      <div className="flex gap-4 mb-4 text-sm">
+      <div className="flex gap-2 mb-6">
         <button
           onClick={() => setFilter('open')}
-          className={`pb-1 transition-colors ${
+          className={`px-3 py-1.5 text-xs font-medium rounded border transition-all duration-200 ${
             filter === 'open'
-              ? 'text-[var(--text-primary)] border-b border-[var(--text-primary)] font-medium'
-              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+              ? 'bg-[var(--background-elevated)] border-[var(--border-active)] text-[var(--text-primary)]'
+              : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--background-tertiary)]'
           }`}
         >
           Open Orders
         </button>
         <button
           onClick={() => setFilter('history')}
-          className={`pb-1 transition-colors ${
+          className={`px-3 py-1.5 text-xs font-medium rounded border transition-all duration-200 ${
             filter === 'history'
-              ? 'text-[var(--text-primary)] border-b border-[var(--text-primary)] font-medium'
-              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+              ? 'bg-[var(--background-elevated)] border-[var(--border-active)] text-[var(--text-primary)]'
+              : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--background-tertiary)]'
           }`}
         >
-          Order History
+          History
         </button>
       </div>
 
       {filteredOrders.length === 0 ? (
-        <div className="text-[var(--text-secondary)] py-4">
-          No {filter} orders
-        </div>
+        <EmptyState message={`No ${filter} orders`} />
       ) : (
-        <table className="w-full">
-          <thead>
-            <tr className="text-left text-sm text-[var(--text-secondary)]">
-              <th className="pb-3">Time</th>
-              <th className="pb-3">Side</th>
-              <th className="pb-3">Type</th>
-              <th className="pb-3">Size</th>
-              <th className="pb-3">Leverage</th>
-              <th className="pb-3">Price</th>
-              <th className="pb-3">Status</th>
-              <th className="pb-3">Transaction</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredOrders.map((order) => (
-              <tr key={order.id} className="border-t border-[var(--border-default)]">
-                <td className="py-3 text-[var(--text-primary)]">
-                  {new Date(order.createdAt).toLocaleString()}
-                </td>
-                <td className="py-3">
-                  <span className={order.side === 'long' ? 'text-green-400' : 'text-red-400'}>
-                    {order.side.toUpperCase()}
-                  </span>
-                </td>
-                <td className="py-3 text-[var(--text-primary)]">
-                  {order.type.toUpperCase()}
-                </td>
-                <td className="py-3 text-[var(--text-primary)]">
-                  {(Number(order.size) / 1e18).toFixed(2)} USDC
-                </td>
-                <td className="py-3 text-[var(--text-primary)]">
-                  {order.leverage ? `${order.leverage}x` : '1x'}
-                </td>
-                <td className="py-3 text-[var(--text-primary)]">
-                  {order.fillPrice || order.limitPrice || '-'}
-                </td>
-                <td className="py-3">
-                  <OrderStatusBadge status={order.status} />
-                </td>
-                <td className="py-3">
-                  {order.txHash ? (
-                    <a
-                      href={`https://sepolia.bscscan.com/tx/${order.txHash}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[var(--accent-blue)] hover:underline"
-                    >
-                      {order.txHash.slice(0, 10)}...{order.txHash.slice(-8)}
-                    </a>
-                  ) : (
-                    <span className="text-[var(--text-secondary)]">-</span>
-                  )}
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider border-b border-[var(--border-muted)]">
+                <th className="pb-3 pl-2">Time</th>
+                <th className="pb-3">Side</th>
+                <th className="pb-3">Type</th>
+                <th className="pb-3">Size</th>
+                <th className="pb-3">Lev</th>
+                <th className="pb-3">Price</th>
+                <th className="pb-3">Status</th>
+                <th className="pb-3 pr-2 text-right">Tx</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-[var(--border-muted)]">
+              {filteredOrders.map((order) => (
+                <tr key={order.id} className="group hover:bg-[var(--background-tertiary)] transition-colors">
+                  <td className="py-3 pl-2 text-sm text-[var(--text-muted)] font-mono">
+                    {new Date(order.createdAt).toLocaleString()}
+                  </td>
+                  <td className="py-3">
+                    <span className={`text-xs font-bold uppercase ${
+                      order.side === 'long' ? 'text-[var(--success-green)]' : 'text-[var(--danger-red)]'
+                    }`}>
+                      {order.side}
+                    </span>
+                  </td>
+                  <td className="py-3 text-sm text-[var(--text-secondary)] font-medium">
+                    {order.type.toUpperCase()}
+                  </td>
+                  <td className="py-3 text-sm text-[var(--text-primary)] font-mono">
+                    {(Number(order.size) / 1e18).toFixed(2)}
+                  </td>
+                  <td className="py-3 text-sm text-[var(--text-secondary)] font-mono">
+                    {order.leverage ? `${order.leverage}x` : '1x'}
+                  </td>
+                  <td className="py-3 text-sm text-[var(--text-primary)] font-mono">
+                    {order.fillPrice || order.limitPrice || '-'}
+                  </td>
+                  <td className="py-3">
+                    <OrderStatusBadge status={order.status} />
+                  </td>
+                  <td className="py-3 pr-2 text-right">
+                    {order.txHash ? (
+                      <a
+                        href={`https://sepolia.bscscan.com/tx/${order.txHash}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[var(--accent-blue)] hover:text-[var(--accent-blue-hover)] hover:underline font-mono text-sm"
+                      >
+                        View
+                      </a>
+                    ) : (
+                      <span className="text-[var(--text-muted)] text-sm">-</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
-      
-      {/* Only show pagination if we're not filtering heavily on client side, 
-          or ideally backend should handle filtering. 
-          For now, keeping pagination controls but noting they apply to the full fetched set. */}
       <PaginationControls
         currentPage={currentPage}
         totalPages={totalPages}
@@ -696,18 +618,52 @@ function OrdersTab({ userAddress }: { userAddress: string }) {
 }
 
 function OrderStatusBadge({ status }: { status: string }) {
-  const statusColors: Record<string, string> = {
-    pending: 'bg-yellow-900/20 text-yellow-400',
-    open: 'bg-blue-900/20 text-blue-400',
-    filled: 'bg-green-900/20 text-green-400',
-    cancelled: 'bg-gray-800 text-gray-400',
-    rejected: 'bg-red-900/20 text-red-400',
+  const styles: Record<string, string> = {
+    pending: 'bg-[var(--warning-yellow-dim)] text-[var(--warning-yellow)]',
+    open: 'bg-[var(--accent-blue-dim)] text-[var(--accent-blue)]',
+    filled: 'bg-[var(--success-green-dim)] text-[var(--success-green)]',
+    cancelled: 'text-[var(--text-muted)]',
+    rejected: 'bg-[var(--danger-red-dim)] text-[var(--danger-red)]',
   };
 
   return (
-    <span className={`px-2 py-1 rounded text-xs ${statusColors[status] || 'bg-gray-800 text-gray-400'}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium uppercase tracking-wide ${styles[status] || 'bg-[var(--background-elevated)] text-[var(--text-muted)]'}`}>
       {status}
     </span>
+  );
+}
+
+// Utility Components for cleaner code
+
+function LoadingState({ text }: { text: string }) {
+  return (
+    <div className="flex items-center justify-center py-20">
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-6 h-6 border-2 border-[var(--accent-blue)] border-t-transparent rounded-full animate-spin"></div>
+        <div className="text-[var(--text-secondary)] text-sm">{text}</div>
+      </div>
+    </div>
+  );
+}
+
+function ErrorState({ message }: { message: string }) {
+  return (
+    <div className="flex items-center justify-center py-12">
+      <div className="text-[var(--danger-red)] bg-[var(--danger-red-dim)] px-4 py-3 rounded-lg text-sm border border-[var(--danger-red-bg)]">
+        {message}
+      </div>
+    </div>
+  );
+}
+
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 text-[var(--text-muted)]">
+      <svg className="w-12 h-12 mb-3 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+      </svg>
+      <p className="text-sm">{message}</p>
+    </div>
   );
 }
 
@@ -729,31 +685,39 @@ function PaginationControls({
   onPrev,
 }: PaginationControlsProps) {
   return (
-    <div className="flex items-center justify-between mt-4 pt-4 border-t border-[var(--border-default)]">
+    <div className="flex items-center justify-between mt-6 pt-6 border-t border-[var(--border-muted)]">
       <button
         onClick={onPrev}
         disabled={!hasPrevPage}
-        className={`px-4 py-2 rounded font-medium transition-colors ${
+        className={`flex items-center gap-1 px-3 py-1.5 rounded text-sm font-medium transition-colors ${
           hasPrevPage
-            ? 'text-[var(--accent-blue)] hover:bg-[var(--background-secondary)]'
-            : 'text-[var(--text-secondary)] cursor-not-allowed opacity-50'
+            ? 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--background-tertiary)]'
+            : 'text-[var(--text-muted)] cursor-not-allowed opacity-30'
         }`}
       >
-        Previous
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+        </svg>
+        Prev
       </button>
-      <span className="text-[var(--text-secondary)] text-sm">
+      
+      <div className="text-xs text-[var(--text-muted)] font-mono">
         Page {currentPage} of {totalPages}
-      </span>
+      </div>
+      
       <button
         onClick={onNext}
         disabled={!hasNextPage}
-        className={`px-4 py-2 rounded font-medium transition-colors ${
+        className={`flex items-center gap-1 px-3 py-1.5 rounded text-sm font-medium transition-colors ${
           hasNextPage
-            ? 'text-[var(--accent-blue)] hover:bg-[var(--background-secondary)]'
-            : 'text-[var(--text-secondary)] cursor-not-allowed opacity-50'
+            ? 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--background-tertiary)]'
+            : 'text-[var(--text-muted)] cursor-not-allowed opacity-30'
         }`}
       >
         Next
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
       </button>
     </div>
   );
