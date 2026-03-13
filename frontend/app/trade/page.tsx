@@ -4,14 +4,18 @@ import { useState } from 'react';
 import { useAccount } from 'wagmi';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Navigation } from '../components/Navigation';
+import { SymbolSelector } from '../components/SymbolSelector';
 import toast from 'react-hot-toast';
 import { useDeposits } from '../hooks/useDeposits';
 import { useWithdrawals } from '../hooks/useWithdrawals';
 import { useOrders } from '../hooks/useOrders';
 
+const AVAILABLE_SYMBOLS = ['ETH', 'BTC', 'SOL'];
+
 interface OrderData {
   side: 'Long' | 'Short';
   size: string;
+  symbol: string;
 }
 
 type HistoryTabType = 'orders' | 'deposits' | 'withdrawals';
@@ -19,16 +23,17 @@ type HistoryTabType = 'orders' | 'deposits' | 'withdrawals';
 export default function TradePage() {
   const { isConnected, address } = useAccount();
   const [size, setSize] = useState('');
+  const [selectedSymbol, setSelectedSymbol] = useState('ETH');
   const [historyTab, setHistoryTab] = useState<HistoryTabType>('orders');
 
   // Fetch orders for refetch after placing order
   const { refetch: refetchOrders } = useOrders(address || '');
 
-  // Fetch current price
+  // Fetch current price for selected symbol
   const { data: priceData, isLoading: priceLoading } = useQuery({
-    queryKey: ['price'],
+    queryKey: ['price', selectedSymbol],
     queryFn: async () => {
-      const response = await fetch('http://localhost:3001/price');
+      const response = await fetch(`http://localhost:3001/price?symbol=${selectedSymbol}`);
       if (!response.ok) throw new Error('Failed to fetch price');
       return response.json();
     },
@@ -48,6 +53,7 @@ export default function TradePage() {
           type: 'market',
           side: orderData.side === 'Long' ? 'long' : 'short',
           size: (BigInt(Math.floor(Number(orderData.size) * 1e18))).toString(),
+          symbol: orderData.symbol,
         }),
       });
 
@@ -73,7 +79,7 @@ export default function TradePage() {
       toast.error('Please enter a valid size');
       return;
     }
-    submitOrder.mutateAsync({ side, size });
+    submitOrder.mutateAsync({ side, size, symbol: selectedSymbol });
   };
 
   if (!isConnected) {
@@ -96,7 +102,7 @@ export default function TradePage() {
       <Navigation />
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Trade Section */}
-        <TradeSection {...{ priceData, priceLoading, size, setSize, submitOrder, handleOrder }} />
+        <TradeSection {...{ priceData, priceLoading, size, setSize, submitOrder, handleOrder, selectedSymbol, setSelectedSymbol }} />
 
         {/* Divider */}
         <hr className="border-t border-[var(--border-default)] my-8" />
@@ -115,9 +121,11 @@ interface TradeSectionProps {
   setSize: (size: string) => void;
   submitOrder: any;
   handleOrder: (side: 'Long' | 'Short') => void;
+  selectedSymbol: string;
+  setSelectedSymbol: (symbol: string) => void;
 }
 
-function TradeSection({ priceData, priceLoading, size, setSize, submitOrder, handleOrder }: TradeSectionProps) {
+function TradeSection({ priceData, priceLoading, size, setSize, submitOrder, handleOrder, selectedSymbol, setSelectedSymbol }: TradeSectionProps) {
   return (
     <section>
       <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-6 text-center">
@@ -127,9 +135,16 @@ function TradeSection({ priceData, priceLoading, size, setSize, submitOrder, han
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Order Form - Left Column */}
         <div className="lg:col-span-1 space-y-4">
+          {/* Symbol Selector */}
+          <SymbolSelector
+            symbols={AVAILABLE_SYMBOLS}
+            selectedSymbol={selectedSymbol}
+            onSymbolChange={setSelectedSymbol}
+          />
+
           {/* Price Display */}
           <div className="bg-[var(--background-secondary)] border border-[var(--border-default)] rounded-lg p-4">
-            <p className="text-sm text-[var(--text-secondary)] mb-1">ETH Price</p>
+            <p className="text-sm text-[var(--text-secondary)] mb-1">{selectedSymbol} Price</p>
             {priceLoading ? (
               <p className="text-xl font-mono text-[var(--text-primary)]">Loading...</p>
             ) : priceData?.success && priceData?.data?.price ? (

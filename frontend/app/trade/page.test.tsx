@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import TradePage from './page';
 import { useAccount } from 'wagmi';
 import { useQuery, useMutation } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 
 // Mock wagmi hooks
 jest.mock('wagmi', () => ({
@@ -47,6 +48,30 @@ jest.mock('../components/Navigation', () => ({
   Navigation: () => <nav data-testid="navigation">Navigation</nav>,
 }));
 
+// Mock SymbolSelector component
+jest.mock('../components/SymbolSelector', () => ({
+  SymbolSelector: ({ symbols, selectedSymbol, onSymbolChange }: any) => (
+    <select
+      data-testid="symbol-selector"
+      value={selectedSymbol}
+      onChange={(e) => onSymbolChange(e.target.value)}
+    >
+      {symbols.map((s: string) => (
+        <option key={s} value={s}>{s}</option>
+      ))}
+    </select>
+  ),
+}));
+
+// Mock toast
+jest.mock('react-hot-toast', () => ({
+  __esModule: true,
+  default: {
+    success: jest.fn(),
+    error: jest.fn(),
+  },
+}));
+
 describe('TradePage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -84,7 +109,9 @@ describe('TradePage', () => {
     it('should show loading state when fetching price', () => {
       mockQueryResult = { data: undefined, isLoading: true, error: null };
       render(<TradePage />);
-      expect(screen.getByText(/loading/i)).toBeInTheDocument();
+      // Look for the price section specifically
+      const priceSection = screen.getByText('ETH Price').parentElement;
+      expect(priceSection).toHaveTextContent('Loading...');
     });
 
     it('should have size input field', () => {
@@ -117,6 +144,7 @@ describe('TradePage', () => {
         expect(mockMutateAsync).toHaveBeenCalledWith({
           side: 'Long',
           size: '100',
+          symbol: 'ETH',
         });
       });
     });
@@ -137,6 +165,7 @@ describe('TradePage', () => {
         expect(mockMutateAsync).toHaveBeenCalledWith({
           side: 'Short',
           size: '100',
+          symbol: 'ETH',
         });
       });
     });
@@ -150,7 +179,7 @@ describe('TradePage', () => {
       const longButton = screen.getByRole('button', { name: /long/i });
       fireEvent.click(longButton);
 
-      expect(screen.getByText(/please enter a valid size/i)).toBeInTheDocument();
+      expect(toast.error).toHaveBeenCalledWith('Please enter a valid size');
     });
 
     it('should show success message after successful order', async () => {
@@ -165,9 +194,9 @@ describe('TradePage', () => {
       const longButton = screen.getByRole('button', { name: /long/i });
       fireEvent.click(longButton);
 
-      // Wait for the success message to appear
-      await screen.findByText(/order submitted successfully!/i);
-      expect(screen.getByText(/order submitted successfully!/i)).toBeInTheDocument();
+      await waitFor(() => {
+        expect(toast.success).toHaveBeenCalledWith('Order submitted successfully!');
+      });
     });
 
     it('should show error message on failed order', async () => {
@@ -182,9 +211,58 @@ describe('TradePage', () => {
       const longButton = screen.getByRole('button', { name: /long/i });
       fireEvent.click(longButton);
 
-      // Wait for the error message to appear
-      await screen.findByText(/order failed:/i);
-      expect(screen.getByText(/order failed:/i)).toBeInTheDocument();
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('Order failed'));
+      });
+    });
+
+    it('should have a symbol selector', () => {
+      mockQueryResult = { data: { price: '50000' }, isLoading: false, error: null };
+      render(<TradePage />);
+
+      expect(screen.getByTestId('symbol-selector')).toBeInTheDocument();
+    });
+
+    it('should default to ETH symbol', () => {
+      mockQueryResult = { data: { price: '50000' }, isLoading: false, error: null };
+      render(<TradePage />);
+
+      expect(screen.getByTestId('symbol-selector')).toHaveValue('ETH');
+    });
+
+    it('should update price query when symbol changes', () => {
+      mockQueryResult = { data: { price: '50000' }, isLoading: false, error: null };
+      render(<TradePage />);
+
+      const selector = screen.getByTestId('symbol-selector');
+      fireEvent.change(selector, { target: { value: 'BTC' } });
+
+      expect(selector).toHaveValue('BTC');
+    });
+
+    it('should submit order with selected symbol', async () => {
+      mockMutateAsync.mockResolvedValue({ success: true });
+      mockQueryResult = { data: { price: '50000' }, isLoading: false, error: null };
+
+      render(<TradePage />);
+
+      // Change symbol to BTC
+      const selector = screen.getByTestId('symbol-selector');
+      fireEvent.change(selector, { target: { value: 'BTC' } });
+
+      const sizeInput = screen.getByLabelText(/size/i);
+      fireEvent.change(sizeInput, { target: { value: '100' } });
+
+      const longButton = screen.getByRole('button', { name: /long/i });
+      fireEvent.click(longButton);
+
+      await waitFor(() => {
+        expect(mockMutateAsync).toHaveBeenCalledWith({
+          side: 'Long',
+          size: '100',
+          symbol: 'BTC',
+        });
+      });
     });
   });
 });
