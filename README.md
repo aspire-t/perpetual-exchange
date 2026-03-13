@@ -38,7 +38,7 @@ A decentralized perpetual futures exchange built on Next.js and NestJS.
 - **Axios** - HTTP client for external APIs
 - **ethers.js** - Ethereum library
 
-## Getting Started
+## Quick Start
 
 ### Prerequisites
 
@@ -46,34 +46,55 @@ A decentralized perpetual futures exchange built on Next.js and NestJS.
 - npm or pnpm
 - PostgreSQL (optional, SQLite used by default)
 
-### Installation
+### 🚀 Rapid Start
 
-#### Backend
+1.  **Clone the repository**:
+    ```bash
+    git clone https://github.com/your-username/perpetual-exchange.git
+    cd perpetual-exchange
+    ```
 
-```bash
-cd backend
-npm install
+2.  **Start Backend**:
+    ```bash
+    cd backend
+    npm install
+    cp .env.example .env
+    npm run start:dev
+    ```
+    The backend will start on `http://localhost:3001`.
 
-# Set up environment variables
-cp .env.example .env
+3.  **Start Frontend**:
+    ```bash
+    cd ../frontend
+    npm install
+    npm run dev
+    ```
+    The frontend will start on `http://localhost:3000`.
 
-# Run development server
-npm run start:dev
-```
+4.  **Open Browser**:
+    Navigate to `http://localhost:3000` to start trading!
 
-The backend will start on `http://localhost:3001`.
+## Documentation
 
-#### Frontend
+- [System Architecture](ARCHITECTURE.md)
+- [AI Usage Report](AI_USAGE_REPORT.md)
+- [Bonus Features](docs/BONUS_FEATURES.md)
 
-```bash
-cd frontend
-npm install
+## System Architecture
 
-# Run development server
-npm run dev
-```
+For a detailed breakdown, please see [ARCHITECTURE.md](ARCHITECTURE.md).
 
-The frontend will start on `http://localhost:3000`.
+### Key Design Decisions
+
+1.  **Hybrid Model**: We utilize an off-chain matching engine for speed and low fees, with on-chain settlement via the `Vault` smart contract for security.
+2.  **Hyperliquid Integration**: To manage protocol risk, we hedge user positions on Hyperliquid (Mock/Real modes supported).
+3.  **Database Strategy**: SQLite is used for development simplicity, while PostgreSQL is configured for production robustness.
+
+### Known Limitations
+
+-   **Centralization**: Order matching and liquidation logic are currently centralized in the backend.
+-   **Mock Hedging**: By default, the system runs in mock hedging mode. Real hedging requires API credentials.
+-   **Order Types**: Currently, only Market orders are fully supported. Limit orders are planned for future updates.
 
 ## Project Structure
 
