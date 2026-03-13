@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { HedgingService } from './hedging.service';
 import { Hedge, HedgeStatus } from '../entities/Hedge.entity';
 import { Position } from '../entities/Position.entity';
@@ -13,6 +13,7 @@ describe('HedgingService', () => {
   let positionRepository: Repository<Position>;
   let priceService: PriceService;
   let hyperliquidClient: HyperliquidClient;
+  let dataSource: DataSource;
 
   const mockHedgeRepository = () => ({
     create: jest.fn(),
@@ -38,7 +39,34 @@ describe('HedgingService', () => {
     getAccountInfo: jest.fn(),
   };
 
+  const mockQueryRunner = {
+    connect: jest.fn(),
+    startTransaction: jest.fn(),
+    commitTransaction: jest.fn(),
+    rollbackTransaction: jest.fn(),
+    release: jest.fn(),
+    manager: {
+      findOne: jest.fn(),
+      create: jest.fn(),
+      save: jest.fn(),
+    },
+  };
+
+  const mockDataSource = {
+    createQueryRunner: jest.fn().mockReturnValue(mockQueryRunner),
+  };
+
   beforeEach(async () => {
+    // Reset all mock implementations
+    mockQueryRunner.manager.findOne.mockReset();
+    mockQueryRunner.manager.save.mockReset();
+    mockQueryRunner.manager.create.mockReset();
+    mockQueryRunner.connect.mockReset();
+    mockQueryRunner.startTransaction.mockReset();
+    mockQueryRunner.commitTransaction.mockReset();
+    mockQueryRunner.rollbackTransaction.mockReset();
+    mockQueryRunner.release.mockReset();
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         HedgingService,
@@ -58,6 +86,10 @@ describe('HedgingService', () => {
           provide: HyperliquidClient,
           useValue: mockHyperliquidClient,
         },
+        {
+          provide: DataSource,
+          useValue: mockDataSource,
+        },
       ],
     }).compile();
 
@@ -68,6 +100,7 @@ describe('HedgingService', () => {
     );
     priceService = module.get<PriceService>(PriceService);
     hyperliquidClient = module.get<HyperliquidClient>(HyperliquidClient);
+    dataSource = module.get<DataSource>(DataSource);
   });
 
   afterEach(() => {
@@ -86,10 +119,20 @@ describe('HedgingService', () => {
       createdAt: new Date(),
     } as Position;
 
+    beforeEach(() => {
+      jest
+        .spyOn(dataSource, 'createQueryRunner')
+        .mockReturnValue(mockQueryRunner as any);
+      mockQueryRunner.connect.mockResolvedValue(undefined);
+      mockQueryRunner.startTransaction.mockResolvedValue(undefined);
+      mockQueryRunner.commitTransaction.mockResolvedValue(undefined);
+      mockQueryRunner.release.mockResolvedValue(undefined);
+    });
+
     it('should open a short hedge for a long position', async () => {
-      jest.spyOn(positionRepository, 'findOne').mockResolvedValue(mockPosition);
-      jest.spyOn(hedgeRepository, 'findOne').mockResolvedValue(null);
-      jest.spyOn(hedgeRepository, 'create').mockImplementation(() => {
+      mockQueryRunner.manager.findOne.mockResolvedValueOnce(mockPosition); // Find position
+      mockQueryRunner.manager.findOne.mockResolvedValueOnce(null); // Check existing hedge
+      mockQueryRunner.manager.create.mockImplementation(() => {
         const hedge = {} as Hedge;
         hedge.positionId = mockPosition.id;
         hedge.size = mockPosition.size;
@@ -106,7 +149,7 @@ describe('HedgingService', () => {
           price: '2000000000',
         },
       });
-      jest.spyOn(hedgeRepository, 'save').mockResolvedValue({
+      mockQueryRunner.manager.save.mockResolvedValue({
         id: 'hedge-1',
         positionId: mockPosition.id,
         size: mockPosition.size,
@@ -122,6 +165,7 @@ describe('HedgingService', () => {
       expect(result.success).toBe(true);
       expect(result.data?.isShort).toBe(true);
       expect(result.data?.size).toBe(mockPosition.size.toString());
+      expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
     });
 
     it('should open a long hedge for a short position', async () => {
@@ -135,11 +179,9 @@ describe('HedgingService', () => {
         createdAt: new Date(),
       } as Position;
 
-      jest
-        .spyOn(positionRepository, 'findOne')
-        .mockResolvedValue(shortPosition);
-      jest.spyOn(hedgeRepository, 'findOne').mockResolvedValue(null);
-      jest.spyOn(hedgeRepository, 'create').mockImplementation(() => {
+      mockQueryRunner.manager.findOne.mockResolvedValueOnce(shortPosition);
+      mockQueryRunner.manager.findOne.mockResolvedValueOnce(null);
+      mockQueryRunner.manager.create.mockImplementation(() => {
         const hedge = {} as Hedge;
         hedge.positionId = shortPosition.id;
         hedge.size = shortPosition.size;
@@ -156,7 +198,7 @@ describe('HedgingService', () => {
           price: '1800000000',
         },
       });
-      jest.spyOn(hedgeRepository, 'save').mockResolvedValue({
+      mockQueryRunner.manager.save.mockResolvedValue({
         id: 'hedge-2',
         positionId: shortPosition.id,
         size: shortPosition.size,
@@ -174,12 +216,14 @@ describe('HedgingService', () => {
     });
 
     it('should return error when position not found', async () => {
-      jest.spyOn(positionRepository, 'findOne').mockResolvedValue(null);
+      mockQueryRunner.manager.findOne.mockResolvedValue(null);
 
       const result = await hedgingService.openHedge('non-existent-id');
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('Position not found');
+      expect(mockQueryRunner.release).toHaveBeenCalled();
+      expect(mockQueryRunner.commitTransaction).not.toHaveBeenCalled();
     });
 
     it('should return error when hedge already exists for position', async () => {
@@ -189,13 +233,38 @@ describe('HedgingService', () => {
         status: HedgeStatus.OPEN,
       } as Hedge;
 
-      jest.spyOn(positionRepository, 'findOne').mockResolvedValue(mockPosition);
-      jest.spyOn(hedgeRepository, 'findOne').mockResolvedValue(existingHedge);
+      mockQueryRunner.manager.findOne.mockResolvedValueOnce(mockPosition);
+      mockQueryRunner.manager.findOne.mockResolvedValueOnce(existingHedge);
 
       const result = await hedgingService.openHedge(mockPosition.id);
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Hedge already exists');
+      expect(mockQueryRunner.release).toHaveBeenCalled();
+    });
+
+    it('should handle failed order placement', async () => {
+      mockQueryRunner.manager.findOne.mockResolvedValueOnce(mockPosition);
+      mockQueryRunner.manager.findOne.mockResolvedValueOnce(null);
+      mockQueryRunner.manager.create.mockImplementation(() => {
+        const hedge = {} as Hedge;
+        hedge.positionId = mockPosition.id;
+        hedge.size = mockPosition.size;
+        hedge.entryPrice = mockPosition.entryPrice;
+        hedge.isShort = mockPosition.isLong;
+        hedge.status = HedgeStatus.PENDING;
+        return hedge;
+      });
+      jest.spyOn(hyperliquidClient, 'placeOrder').mockResolvedValue({
+        success: false,
+        error: 'Insufficient balance',
+      });
+
+      const result = await hedgingService.openHedge(mockPosition.id);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Failed to place hedge order');
+      expect(mockQueryRunner.manager.save).toHaveBeenCalled();
     });
   });
 
@@ -210,10 +279,33 @@ describe('HedgingService', () => {
       createdAt: new Date(),
     } as Hedge;
 
-    it('should close a hedge with profit', async () => {
-      const exitPrice = BigInt('1900000000'); // Price went down, short hedge profits
+    beforeEach(() => {
+      jest
+        .spyOn(dataSource, 'createQueryRunner')
+        .mockReturnValue(mockQueryRunner as any);
+      mockQueryRunner.connect.mockResolvedValue(undefined);
+      mockQueryRunner.startTransaction.mockResolvedValue(undefined);
+      mockQueryRunner.commitTransaction.mockResolvedValue(undefined);
+      mockQueryRunner.release.mockResolvedValue(undefined);
+      mockQueryRunner.manager.findOne.mockImplementation((entity, options) => {
+        // Check if first argument is the Hedge entity class
+        if (entity && typeof entity === 'function' && entity.name === 'Hedge') {
+          // Return a copy to prevent mutation
+          return Promise.resolve({ ...mockOpenHedge });
+        }
+        return Promise.resolve(null);
+      });
+      mockQueryRunner.manager.save.mockImplementation(async (obj) => ({
+        ...obj,
+      }));
+    });
 
-      jest.spyOn(hedgeRepository, 'findOne').mockResolvedValue(mockOpenHedge);
+    it('should close a hedge with profit', async () => {
+      const exitPrice = BigInt('1900000000');
+
+      mockQueryRunner.manager.findOne.mockResolvedValueOnce({
+        ...mockOpenHedge,
+      });
       jest.spyOn(hyperliquidClient, 'closePosition').mockResolvedValue({
         success: true,
         data: { orderId: 'close-order-123' },
@@ -222,7 +314,7 @@ describe('HedgingService', () => {
         success: true,
         data: { coin: 'ETH', price: exitPrice.toString() },
       });
-      jest.spyOn(hedgeRepository, 'save').mockResolvedValue({
+      mockQueryRunner.manager.save.mockResolvedValueOnce({
         ...mockOpenHedge,
         status: HedgeStatus.CLOSED,
         exitPrice,
@@ -235,15 +327,46 @@ describe('HedgingService', () => {
       expect(result.success).toBe(true);
       expect(result.data?.status).toBe(HedgeStatus.CLOSED);
       expect(result.data?.pnl).toBe('100000000');
+      expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
     });
 
     it('should return error when hedge not found', async () => {
-      jest.spyOn(hedgeRepository, 'findOne').mockResolvedValue(null);
+      mockQueryRunner.manager.findOne.mockResolvedValue(null);
 
       const result = await hedgingService.closeHedge('non-existent-id');
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('Hedge not found');
+      expect(mockQueryRunner.release).toHaveBeenCalled();
+    });
+
+    it('should return error when Hyperliquid close fails', async () => {
+      // Reset mock implementations completely and set up fresh
+      mockQueryRunner.manager.findOne.mockReset();
+      mockQueryRunner.manager.save.mockReset();
+
+      // Set up mock to return open hedge for Hedge entity queries
+      mockQueryRunner.manager.findOne.mockImplementation((entity, options) => {
+        // Check if first argument is the Hedge entity class
+        if (entity && typeof entity === 'function' && entity.name === 'Hedge') {
+          // Return a copy to prevent mutation
+          return Promise.resolve({ ...mockOpenHedge });
+        }
+        return Promise.resolve(null);
+      });
+      mockQueryRunner.manager.save.mockImplementation(async (obj) => ({
+        ...obj,
+      }));
+
+      jest.spyOn(hyperliquidClient, 'closePosition').mockResolvedValue({
+        success: false,
+        error: 'Position not found on Hyperliquid',
+      });
+
+      const result = await hedgingService.closeHedge('hedge-1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Failed to close hedge on Hyperliquid:');
     });
 
     it('should return error when hedge is already closed', async () => {
@@ -252,12 +375,13 @@ describe('HedgingService', () => {
         status: HedgeStatus.CLOSED,
       } as Hedge;
 
-      jest.spyOn(hedgeRepository, 'findOne').mockResolvedValue(closedHedge);
+      mockQueryRunner.manager.findOne.mockResolvedValue(closedHedge);
 
       const result = await hedgingService.closeHedge('hedge-1');
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('Hedge is already closed');
+      expect(mockQueryRunner.release).toHaveBeenCalled();
     });
   });
 
@@ -405,17 +529,32 @@ describe('HedgingService', () => {
       createdAt: new Date(),
     } as Position;
 
-    it('should automatically open hedge when position is opened', async () => {
-      jest.spyOn(positionRepository, 'findOne').mockResolvedValue(mockPosition);
-      jest.spyOn(hedgeRepository, 'findOne').mockResolvedValue(null);
-      jest.spyOn(hedgeRepository, 'create').mockImplementation(() => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+      mockQueryRunner.manager.findOne.mockReset();
+      mockQueryRunner.manager.save.mockReset();
+      mockQueryRunner.manager.create.mockReset();
+
+      jest
+        .spyOn(dataSource, 'createQueryRunner')
+        .mockReturnValue(mockQueryRunner as any);
+      mockQueryRunner.connect.mockResolvedValue(undefined);
+      mockQueryRunner.startTransaction.mockResolvedValue(undefined);
+      mockQueryRunner.commitTransaction.mockResolvedValue(undefined);
+      mockQueryRunner.release.mockResolvedValue(undefined);
+      mockQueryRunner.manager.create.mockImplementation(() => {
         const hedge = {} as Hedge;
-        hedge.positionId = mockPosition.id;
-        hedge.size = mockPosition.size;
-        hedge.entryPrice = mockPosition.entryPrice;
-        hedge.isShort = mockPosition.isLong;
-        hedge.status = HedgeStatus.PENDING;
+        hedge.id = 'hedge-1';
         return hedge;
+      });
+    });
+
+    it('should automatically open hedge when position is opened', async () => {
+      mockQueryRunner.manager.findOne.mockImplementation((entity, options) => {
+        if (entity === Position) {
+          return Promise.resolve(mockPosition);
+        }
+        return Promise.resolve(null);
       });
       jest.spyOn(hyperliquidClient, 'placeOrder').mockResolvedValue({
         success: true,
@@ -425,7 +564,7 @@ describe('HedgingService', () => {
           price: '2000000000',
         },
       });
-      jest.spyOn(hedgeRepository, 'save').mockResolvedValue({
+      mockQueryRunner.manager.save.mockResolvedValue({
         id: 'hedge-1',
         positionId: mockPosition.id,
         size: mockPosition.size,
@@ -449,15 +588,22 @@ describe('HedgingService', () => {
         status: HedgeStatus.OPEN,
       } as Hedge;
 
-      jest.spyOn(positionRepository, 'findOne').mockResolvedValue(mockPosition);
-      jest.spyOn(hedgeRepository, 'findOne').mockResolvedValue(existingHedge);
+      mockQueryRunner.manager.findOne.mockImplementation((entity, options) => {
+        if (entity === Position) {
+          return Promise.resolve(mockPosition);
+        }
+        if (entity === Hedge) {
+          return Promise.resolve(existingHedge);
+        }
+        return Promise.resolve(null);
+      });
 
       const result = await hedgingService.autoHedge(mockPosition.id);
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Hedge already exists');
-      expect(hedgeRepository.create).not.toHaveBeenCalled();
-      expect(hedgeRepository.save).not.toHaveBeenCalled();
+      expect(mockQueryRunner.manager.create).not.toHaveBeenCalled();
+      expect(mockQueryRunner.manager.save).not.toHaveBeenCalled();
     });
   });
 
@@ -472,6 +618,16 @@ describe('HedgingService', () => {
       createdAt: new Date(),
     } as Hedge;
 
+    beforeEach(() => {
+      jest
+        .spyOn(dataSource, 'createQueryRunner')
+        .mockReturnValue(mockQueryRunner as any);
+      mockQueryRunner.connect.mockResolvedValue(undefined);
+      mockQueryRunner.startTransaction.mockResolvedValue(undefined);
+      mockQueryRunner.commitTransaction.mockResolvedValue(undefined);
+      mockQueryRunner.release.mockResolvedValue(undefined);
+    });
+
     it('should sync hedge status with Hyperliquid', async () => {
       const mockHlPosition = {
         entryPx: '2100000000',
@@ -479,12 +635,12 @@ describe('HedgingService', () => {
         liquidationPx: '1800000000',
       };
 
-      jest.spyOn(hedgeRepository, 'findOne').mockResolvedValue(mockHedge);
+      mockQueryRunner.manager.findOne.mockResolvedValue(mockHedge);
       jest.spyOn(hyperliquidClient, 'getPosition').mockResolvedValue({
         success: true,
         data: mockHlPosition,
       });
-      jest.spyOn(hedgeRepository, 'save').mockResolvedValue({
+      mockQueryRunner.manager.save.mockResolvedValue({
         ...mockHedge,
         entryPrice: BigInt('2100000000'),
         pnl: '100000000',
@@ -496,30 +652,33 @@ describe('HedgingService', () => {
       expect(result.data?.synced).toBe(true);
       expect(result.data?.entryPrice).toBe('2100000000');
       expect(hyperliquidClient.getPosition).toHaveBeenCalledWith('ETH');
+      expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
     });
 
     it('should return error when hedge not found', async () => {
-      jest.spyOn(hedgeRepository, 'findOne').mockResolvedValue(null);
+      mockQueryRunner.manager.findOne.mockResolvedValue(null);
 
       const result = await hedgingService.syncHedgeStatus('non-existent-id');
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('Hedge not found');
+      expect(mockQueryRunner.release).toHaveBeenCalled();
     });
 
     it('should return synced=false when hedge is already closed', async () => {
       const closedHedge = { ...mockHedge, status: HedgeStatus.CLOSED } as Hedge;
-      jest.spyOn(hedgeRepository, 'findOne').mockResolvedValue(closedHedge);
+      mockQueryRunner.manager.findOne.mockResolvedValue(closedHedge);
 
       const result = await hedgingService.syncHedgeStatus('hedge-1');
 
       expect(result.success).toBe(true);
       expect(result.data?.synced).toBe(false);
       expect(result.data?.reason).toBe('Already closed');
+      expect(mockQueryRunner.release).toHaveBeenCalled();
     });
 
     it('should return error when Hyperliquid API fails', async () => {
-      jest.spyOn(hedgeRepository, 'findOne').mockResolvedValue(mockHedge);
+      mockQueryRunner.manager.findOne.mockResolvedValue(mockHedge);
       jest.spyOn(hyperliquidClient, 'getPosition').mockResolvedValue({
         success: false,
         error: 'API error',
@@ -529,10 +688,11 @@ describe('HedgingService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('API error');
+      expect(mockQueryRunner.release).toHaveBeenCalled();
     });
 
     it('should handle sync failure gracefully', async () => {
-      jest.spyOn(hedgeRepository, 'findOne').mockResolvedValue(mockHedge);
+      mockQueryRunner.manager.findOne.mockResolvedValue(mockHedge);
       jest
         .spyOn(hyperliquidClient, 'getPosition')
         .mockRejectedValue(new Error('Network error'));
@@ -541,6 +701,7 @@ describe('HedgingService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Failed to sync hedge status');
+      expect(mockQueryRunner.rollbackTransaction).toHaveBeenCalled();
     });
   });
 

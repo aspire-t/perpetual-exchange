@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BalanceService } from './balance.service';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { User } from '../entities/User.entity';
 import { Position } from '../entities/Position.entity';
 import { Deposit } from '../entities/Deposit.entity';
@@ -30,6 +30,22 @@ describe('BalanceService', () => {
     createQueryBuilder: jest.fn(),
   };
 
+  const mockQueryRunner = {
+    connect: jest.fn(),
+    startTransaction: jest.fn(),
+    commitTransaction: jest.fn(),
+    rollbackTransaction: jest.fn(),
+    release: jest.fn(),
+    manager: {
+      findOne: jest.fn(),
+      save: jest.fn(),
+    },
+  };
+
+  const mockDataSource = {
+    createQueryRunner: jest.fn().mockReturnValue(mockQueryRunner),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -49,6 +65,10 @@ describe('BalanceService', () => {
         {
           provide: getRepositoryToken(Position),
           useValue: mockPositionRepository,
+        },
+        {
+          provide: DataSource,
+          useValue: mockDataSource,
         },
       ],
     }).compile();
@@ -233,6 +253,172 @@ describe('BalanceService', () => {
           balance: '400',
         },
       });
+    });
+  });
+
+  describe('lockMargin', () => {
+    const userId = 'user-1';
+    const marginAmount = BigInt('1000000000000000000'); // 1 token
+
+    beforeEach(() => {
+      mockQueryRunner.connect.mockClear();
+      mockQueryRunner.startTransaction.mockClear();
+      mockQueryRunner.commitTransaction.mockClear();
+      mockQueryRunner.rollbackTransaction.mockClear();
+      mockQueryRunner.release.mockClear();
+      mockQueryRunner.manager.findOne.mockClear();
+      mockQueryRunner.manager.save.mockClear();
+    });
+
+    it('should lock margin successfully when user has sufficient balance', async () => {
+      const user = { id: userId, balance: '2000000000000000000' } as User; // 2 tokens
+      mockQueryRunner.manager.findOne.mockResolvedValue(user);
+      mockQueryRunner.manager.save.mockResolvedValue({
+        ...user,
+        balance: '1000000000000000000',
+      });
+
+      const result = await balanceService.lockMargin(userId, marginAmount);
+
+      expect(mockQueryRunner.connect).toHaveBeenCalled();
+      expect(mockQueryRunner.startTransaction).toHaveBeenCalled();
+      expect(mockQueryRunner.manager.findOne).toHaveBeenCalledWith(
+        expect.any(Function),
+        {
+          where: { id: userId },
+        },
+      );
+      expect(mockQueryRunner.manager.save).toHaveBeenCalled();
+      expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
+      expect(mockQueryRunner.release).toHaveBeenCalled();
+      expect(result).toEqual({ success: true });
+    });
+
+    it('should return error when user not found', async () => {
+      mockQueryRunner.manager.findOne.mockResolvedValue(null);
+
+      const result = await balanceService.lockMargin(userId, marginAmount);
+
+      expect(mockQueryRunner.release).toHaveBeenCalled();
+      expect(result).toEqual({
+        success: false,
+        error: 'User not found',
+      });
+      expect(mockQueryRunner.commitTransaction).not.toHaveBeenCalled();
+    });
+
+    it('should return error when user has insufficient balance', async () => {
+      const user = { id: userId, balance: '500000000000000000' } as User; // 0.5 tokens
+      mockQueryRunner.manager.findOne.mockResolvedValue(user);
+
+      const result = await balanceService.lockMargin(userId, marginAmount);
+
+      expect(result).toEqual({
+        success: false,
+        error: expect.stringContaining('Insufficient balance'),
+      });
+      expect(mockQueryRunner.commitTransaction).not.toHaveBeenCalled();
+    });
+
+    it('should rollback transaction on error', async () => {
+      const user = { id: userId, balance: '2000000000000000000' } as User;
+      mockQueryRunner.manager.findOne.mockResolvedValue(user);
+      mockQueryRunner.manager.save.mockRejectedValue(
+        new Error('Database error'),
+      );
+
+      const result = await balanceService.lockMargin(userId, marginAmount);
+
+      expect(mockQueryRunner.rollbackTransaction).toHaveBeenCalled();
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Failed to lock margin');
+    });
+  });
+
+  describe('releaseMargin', () => {
+    const userId = 'user-1';
+    const marginAmount = BigInt('1000000000000000000'); // 1 token
+    const pnl = BigInt('200000000000000000'); // 0.2 tokens profit
+
+    beforeEach(() => {
+      mockQueryRunner.connect.mockClear();
+      mockQueryRunner.startTransaction.mockClear();
+      mockQueryRunner.commitTransaction.mockClear();
+      mockQueryRunner.rollbackTransaction.mockClear();
+      mockQueryRunner.release.mockClear();
+      mockQueryRunner.manager.findOne.mockClear();
+      mockQueryRunner.manager.save.mockClear();
+    });
+
+    it('should release margin with PnL successfully', async () => {
+      const user = { id: userId, balance: '1000000000000000000' } as User; // 1 token
+      mockQueryRunner.manager.findOne.mockResolvedValue(user);
+      mockQueryRunner.manager.save.mockResolvedValue({
+        ...user,
+        balance: '2200000000000000000',
+      });
+
+      const result = await balanceService.releaseMargin(
+        userId,
+        marginAmount,
+        pnl,
+      );
+
+      expect(mockQueryRunner.connect).toHaveBeenCalled();
+      expect(mockQueryRunner.startTransaction).toHaveBeenCalled();
+      expect(mockQueryRunner.manager.save).toHaveBeenCalled();
+      expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
+      expect(result).toEqual({ success: true });
+    });
+
+    it('should release margin with zero PnL', async () => {
+      const user = { id: userId, balance: '500000000000000000' } as User;
+      mockQueryRunner.manager.findOne.mockResolvedValue(user);
+      mockQueryRunner.manager.save.mockResolvedValue({
+        ...user,
+        balance: '1500000000000000000',
+      });
+
+      const result = await balanceService.releaseMargin(
+        userId,
+        marginAmount,
+        BigInt(0),
+      );
+
+      expect(result).toEqual({ success: true });
+    });
+
+    it('should return error when user not found', async () => {
+      mockQueryRunner.manager.findOne.mockResolvedValue(null);
+
+      const result = await balanceService.releaseMargin(
+        userId,
+        marginAmount,
+        pnl,
+      );
+
+      expect(result).toEqual({
+        success: false,
+        error: 'User not found',
+      });
+    });
+
+    it('should rollback transaction on error', async () => {
+      const user = { id: userId, balance: '1000000000000000000' } as User;
+      mockQueryRunner.manager.findOne.mockResolvedValue(user);
+      mockQueryRunner.manager.save.mockRejectedValue(
+        new Error('Database error'),
+      );
+
+      const result = await balanceService.releaseMargin(
+        userId,
+        marginAmount,
+        pnl,
+      );
+
+      expect(mockQueryRunner.rollbackTransaction).toHaveBeenCalled();
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Failed to release margin');
     });
   });
 });

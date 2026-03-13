@@ -18,6 +18,7 @@ describe('DepositService', () => {
     create: jest.fn(),
     save: jest.fn(),
     findOne: jest.fn(),
+    find: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -129,6 +130,102 @@ describe('DepositService', () => {
       expect(result).toEqual({
         success: false,
         error: 'Transaction already processed',
+      });
+    });
+  });
+
+  describe('getUserDeposits', () => {
+    const address = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
+    const normalizedAddress = address.toLowerCase();
+
+    it('should return deposits for user with existing deposits', async () => {
+      const user = { id: '1', address: normalizedAddress } as User;
+      const mockDeposits = [
+        {
+          id: '1',
+          userId: user.id,
+          amount: '1000000000000000000',
+          status: 'confirmed',
+          txHash:
+            '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+          createdAt: new Date('2024-01-01'),
+        },
+        {
+          id: '2',
+          userId: user.id,
+          amount: '500000000000000000',
+          status: 'confirmed',
+          txHash:
+            '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
+          createdAt: new Date('2024-01-02'),
+        },
+      ] as Deposit[];
+
+      mockUserRepository.findOne.mockResolvedValue(user);
+      mockDepositRepository.find.mockResolvedValue(mockDeposits);
+
+      const result = await depositService.getUserDeposits(address);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toHaveLength(2);
+      expect(result.data![0]).toEqual({
+        id: '1',
+        userId: user.id,
+        amount: '1000000000000000000',
+        status: 'confirmed',
+        txHash:
+          '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+        createdAt: expect.any(Date),
+      });
+      expect(mockUserRepository.findOne).toHaveBeenCalledWith({
+        where: { address: normalizedAddress },
+      });
+      expect(mockDepositRepository.find).toHaveBeenCalledWith({
+        where: { userId: user.id },
+        order: { createdAt: 'DESC' },
+      });
+    });
+
+    it('should return empty array for user with no deposits', async () => {
+      const user = { id: '1', address: normalizedAddress } as User;
+
+      mockUserRepository.findOne.mockResolvedValue(user);
+      mockDepositRepository.find.mockResolvedValue([]);
+
+      const result = await depositService.getUserDeposits(address);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual([]);
+      expect(mockDepositRepository.find).toHaveBeenCalledWith({
+        where: { userId: user.id },
+        order: { createdAt: 'DESC' },
+      });
+    });
+
+    it('should return empty array for non-existent user', async () => {
+      mockUserRepository.findOne.mockResolvedValue(null);
+
+      const result = await depositService.getUserDeposits(address);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual([]);
+      expect(mockUserRepository.findOne).toHaveBeenCalledWith({
+        where: { address: normalizedAddress },
+      });
+      expect(mockDepositRepository.find).not.toHaveBeenCalled();
+    });
+
+    it('should normalize address to lowercase before query', async () => {
+      const mixedCaseAddress = '0xF39Fd6e51AAD88F6F4ce6aB8827279cffFb92266';
+      const user = { id: '1', address: normalizedAddress } as User;
+
+      mockUserRepository.findOne.mockResolvedValue(user);
+      mockDepositRepository.find.mockResolvedValue([]);
+
+      await depositService.getUserDeposits(mixedCaseAddress);
+
+      expect(mockUserRepository.findOne).toHaveBeenCalledWith({
+        where: { address: normalizedAddress },
       });
     });
   });

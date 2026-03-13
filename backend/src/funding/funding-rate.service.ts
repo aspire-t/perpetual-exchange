@@ -5,6 +5,11 @@ import { FundingRate } from '../entities/FundingRate.entity';
 import { Position } from '../entities/Position.entity';
 import { PriceService } from '../price/price.service';
 
+interface CachedRate {
+  rate: string;
+  timestamp: number;
+}
+
 /**
  * Funding Rate Service
  *
@@ -26,6 +31,10 @@ export class FundingRateService {
   // Default funding rate (0.01% per 8 hours = 0.0001)
   private readonly DEFAULT_FUNDING_RATE = 0.0001;
 
+  // Cache for funding rates with 60 second TTL
+  private readonly rateCache = new Map<string, CachedRate>();
+  private readonly CACHE_TTL = 60000;
+
   constructor(
     @InjectRepository(FundingRate)
     private fundingRateRepository: Repository<FundingRate>,
@@ -40,16 +49,29 @@ export class FundingRateService {
    * @returns Current funding rate
    */
   async getCurrentFundingRate(symbol: string = 'ETH'): Promise<string> {
+    const cached = this.rateCache.get(symbol);
+    const now = Date.now();
+
+    if (cached && now - cached.timestamp < this.CACHE_TTL) {
+      return cached.rate;
+    }
+
     const latestRate = await this.fundingRateRepository.findOne({
       where: { symbol },
       order: { timestamp: 'DESC' },
     });
 
-    if (latestRate) {
-      return latestRate.rate;
-    }
+    const rate = latestRate
+      ? latestRate.rate
+      : this.DEFAULT_FUNDING_RATE.toString();
 
-    return this.DEFAULT_FUNDING_RATE.toString();
+    // Cache the rate
+    this.rateCache.set(symbol, {
+      rate,
+      timestamp: now,
+    });
+
+    return rate;
   }
 
   /**
@@ -151,16 +173,11 @@ export class FundingRateService {
    * @param fundingRate Current funding rate
    * @returns Funding amount (positive = pay, negative = receive)
    */
-  calculatePositionFunding(
-    position: Position,
-    fundingRate: string,
-  ): bigint {
+  calculatePositionFunding(position: Position, fundingRate: string): bigint {
     const positionSize = BigInt(position.size);
     const rate = parseFloat(fundingRate);
 
-    let fundingAmount = BigInt(
-      Math.floor(Number(positionSize) * rate),
-    );
+    let fundingAmount = BigInt(Math.floor(Number(positionSize) * rate));
 
     // For short positions, invert the funding direction
     if (!position.isLong) {
@@ -187,6 +204,9 @@ export class FundingRateService {
       price,
       interval: this.FUNDING_INTERVAL,
     });
+
+    // Invalidate cache for this symbol
+    this.rateCache.delete(symbol);
 
     return this.fundingRateRepository.save(fundingRate);
   }

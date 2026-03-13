@@ -114,6 +114,129 @@ export class PositionService {
     };
   }
 
+  /**
+   * Increase position size (add to existing position)
+   * Only works for same direction (long/long or short/short)
+   * Recalculates weighted average entry price
+   */
+  async increasePosition(
+    positionId: string,
+    additionalSize: bigint,
+    newEntryPrice: bigint,
+  ): Promise<{ success: boolean; data?: any; error?: string }> {
+    if (additionalSize <= BigInt(0)) {
+      return {
+        success: false,
+        error: 'Invalid size: must be greater than 0',
+      };
+    }
+
+    const position = await this.positionRepository.findOne({
+      where: { id: positionId },
+    });
+
+    if (!position) {
+      return { success: false, error: 'Position not found' };
+    }
+
+    if (!position.isOpen) {
+      return { success: false, error: 'Position is not open' };
+    }
+
+    // Calculate new weighted average entry price
+    // newEntryPrice = (oldSize * oldPrice + newSize * newPrice) / (oldSize + newSize)
+    const oldSize = BigInt(position.size);
+    const oldEntryPrice = BigInt(position.entryPrice);
+    const totalSize = oldSize + additionalSize;
+    const totalValue = oldSize * oldEntryPrice + additionalSize * newEntryPrice;
+    const averageEntryPrice = totalValue / totalSize;
+
+    // Update position
+    position.size = totalSize.toString();
+    position.entryPrice = averageEntryPrice.toString();
+
+    await this.positionRepository.save(position);
+
+    return {
+      success: true,
+      data: {
+        id: position.id,
+        size: position.size.toString(),
+        entryPrice: position.entryPrice.toString(),
+        averageEntryPrice: averageEntryPrice.toString(),
+      },
+    };
+  }
+
+  /**
+   * Reduce position size (partial close)
+   * Realizes PnL proportionally
+   */
+  async reducePosition(
+    positionId: string,
+    reduceSize: bigint,
+    currentPrice: bigint,
+  ): Promise<{ success: boolean; data?: any; error?: string }> {
+    if (reduceSize <= BigInt(0)) {
+      return {
+        success: false,
+        error: 'Invalid size: must be greater than 0',
+      };
+    }
+
+    const position = await this.positionRepository.findOne({
+      where: { id: positionId },
+    });
+
+    if (!position) {
+      return { success: false, error: 'Position not found' };
+    }
+
+    if (!position.isOpen) {
+      return { success: false, error: 'Position is not open' };
+    }
+
+    const currentPositionSize = BigInt(position.size);
+    if (reduceSize > currentPositionSize) {
+      return {
+        success: false,
+        error: `Reduce size (${reduceSize.toString()}) exceeds position size (${currentPositionSize.toString()})`,
+      };
+    }
+
+    // Calculate realized PnL for the reduced portion
+    const entryPrice = BigInt(position.entryPrice);
+    const realizedPnl = this.calculatePnL(
+      reduceSize,
+      entryPrice,
+      currentPrice,
+      position.isLong,
+    );
+
+    // Update position size
+    const newSize = currentPositionSize - reduceSize;
+    position.size = newSize.toString();
+
+    // If position is fully closed, mark as closed
+    if (newSize === BigInt(0)) {
+      position.isOpen = false;
+      position.exitPrice = currentPrice.toString();
+      position.closedAt = new Date();
+    }
+
+    await this.positionRepository.save(position);
+
+    return {
+      success: true,
+      data: {
+        id: position.id,
+        size: position.size.toString(),
+        isOpen: position.isOpen,
+        realizedPnl: realizedPnl.toString(),
+      },
+    };
+  }
+
   async getPosition(
     positionId: string,
   ): Promise<{ success: boolean; data?: any; error?: string }> {
@@ -142,9 +265,18 @@ export class PositionService {
     };
   }
 
+  /**
+   * Get all positions for a user with pagination
+   * @param userAddress - The user address to filter positions
+   * @param openOnly - Filter for open positions only (default: true)
+   * @param page - Page number (default: 1)
+   * @param pageSize - Number of records per page (default: 50)
+   */
   async getUserPositions(
     userAddress: string,
     openOnly: boolean = true,
+    page: number = 1,
+    pageSize: number = 50,
   ): Promise<{ success: boolean; data?: any[]; error?: string }> {
     // Normalize address to lowercase for consistent lookup
     const normalizedAddress = userAddress.toLowerCase();
@@ -161,6 +293,8 @@ export class PositionService {
     const positions = await this.positionRepository.find({
       where: openOnly ? { userId: user.id, isOpen: true } : { userId: user.id },
       order: { createdAt: 'DESC' },
+      take: pageSize,
+      skip: (page - 1) * pageSize,
     });
 
     return {

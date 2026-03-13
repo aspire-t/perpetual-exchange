@@ -6,10 +6,13 @@ import { FundingRate } from '../entities/FundingRate.entity';
 import { Position } from '../entities/Position.entity';
 import { PriceService } from '../price/price.service';
 
+jest.useFakeTimers();
+
 describe('FundingRateService', () => {
   let fundingRateService: FundingRateService;
   let fundingRateRepository: Repository<FundingRate>;
   let positionRepository: Repository<Position>;
+  let now: number;
 
   const mockFundingRateRepository = () => ({
     findOne: jest.fn(),
@@ -28,6 +31,9 @@ describe('FundingRateService', () => {
   };
 
   beforeEach(async () => {
+    now = Date.now();
+    jest.spyOn(Date, 'now').mockImplementation(() => now);
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         FundingRateService,
@@ -59,6 +65,10 @@ describe('FundingRateService', () => {
     jest.clearAllMocks();
   });
 
+  afterAll(() => {
+    jest.useRealTimers();
+  });
+
   describe('getCurrentFundingRate', () => {
     it('should return latest funding rate from database', async () => {
       const mockRate = { symbol: 'ETH', rate: '0.00015' } as FundingRate;
@@ -79,6 +89,75 @@ describe('FundingRateService', () => {
       const result = await fundingRateService.getCurrentFundingRate('ETH');
 
       expect(result).toBe('0.0001');
+    });
+
+    it('should cache the funding rate and return cached value on subsequent calls within TTL', async () => {
+      const mockRate = { symbol: 'ETH', rate: '0.00015' } as FundingRate;
+      jest.spyOn(fundingRateRepository, 'findOne').mockResolvedValue(mockRate);
+
+      const firstResult = await fundingRateService.getCurrentFundingRate('ETH');
+      expect(firstResult).toBe('0.00015');
+
+      const secondResult =
+        await fundingRateService.getCurrentFundingRate('ETH');
+      expect(secondResult).toBe('0.00015');
+
+      expect(fundingRateRepository.findOne).toHaveBeenCalledTimes(1);
+    });
+
+    it('should refetch funding rate after TTL expires', async () => {
+      const mockRate = { symbol: 'ETH', rate: '0.00015' } as FundingRate;
+      jest.spyOn(fundingRateRepository, 'findOne').mockResolvedValue(mockRate);
+
+      await fundingRateService.getCurrentFundingRate('ETH');
+
+      // Advance time by 61 seconds (TTL is 60 seconds)
+      now += 61000;
+      jest.advanceTimersByTime(61000);
+
+      const mockRate2 = { symbol: 'ETH', rate: '0.00020' } as FundingRate;
+      jest.spyOn(fundingRateRepository, 'findOne').mockResolvedValue(mockRate2);
+
+      const result = await fundingRateService.getCurrentFundingRate('ETH');
+
+      expect(result).toBe('0.00020');
+      expect(fundingRateRepository.findOne).toHaveBeenCalledTimes(2);
+    });
+
+    it('should cache different symbols separately', async () => {
+      const mockEthRate = { symbol: 'ETH', rate: '0.00015' } as FundingRate;
+      const mockBtcRate = { symbol: 'BTC', rate: '0.00010' } as FundingRate;
+
+      jest
+        .spyOn(fundingRateRepository, 'findOne')
+        .mockResolvedValueOnce(mockEthRate);
+      jest
+        .spyOn(fundingRateRepository, 'findOne')
+        .mockResolvedValueOnce(mockBtcRate);
+
+      await fundingRateService.getCurrentFundingRate('ETH');
+      await fundingRateService.getCurrentFundingRate('BTC');
+
+      expect(fundingRateRepository.findOne).toHaveBeenCalledTimes(2);
+    });
+
+    it('should cache different symbols separately and reuse cached values', async () => {
+      const mockEthRate = { symbol: 'ETH', rate: '0.00015' } as FundingRate;
+      const mockBtcRate = { symbol: 'BTC', rate: '0.00010' } as FundingRate;
+
+      jest
+        .spyOn(fundingRateRepository, 'findOne')
+        .mockResolvedValueOnce(mockEthRate);
+      jest
+        .spyOn(fundingRateRepository, 'findOne')
+        .mockResolvedValueOnce(mockBtcRate);
+
+      await fundingRateService.getCurrentFundingRate('ETH');
+      await fundingRateService.getCurrentFundingRate('BTC');
+      await fundingRateService.getCurrentFundingRate('ETH');
+      await fundingRateService.getCurrentFundingRate('BTC');
+
+      expect(fundingRateRepository.findOne).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -295,6 +374,34 @@ describe('FundingRateService', () => {
       });
       expect(fundingRateRepository.save).toHaveBeenCalledWith(mockFundingRate);
       expect(result).toEqual(mockFundingRate);
+    });
+
+    it('should invalidate cache when saving a new funding rate', async () => {
+      const mockRate = { symbol: 'ETH', rate: '0.00015' } as FundingRate;
+      jest.spyOn(fundingRateRepository, 'findOne').mockResolvedValue(mockRate);
+
+      // First call caches the rate
+      await fundingRateService.getCurrentFundingRate('ETH');
+
+      // Save a new rate (should invalidate cache)
+      const newRate = {
+        symbol: 'ETH',
+        rate: '0.00020',
+        price: '2000000000',
+      } as FundingRate;
+      jest.spyOn(fundingRateRepository, 'create').mockReturnValue(newRate);
+      jest.spyOn(fundingRateRepository, 'save').mockResolvedValue(newRate);
+
+      await fundingRateService.saveFundingRate('ETH', '0.00020', '2000000000');
+
+      // Set up mock for next fetch
+      jest.spyOn(fundingRateRepository, 'findOne').mockResolvedValue(newRate);
+
+      // Next call should fetch from DB (cache was invalidated)
+      const result = await fundingRateService.getCurrentFundingRate('ETH');
+
+      expect(result).toBe('0.00020');
+      expect(fundingRateRepository.findOne).toHaveBeenCalledTimes(2);
     });
   });
 

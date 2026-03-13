@@ -70,6 +70,9 @@ export class Order {
   })
   status: OrderStatus;
 
+  @Column({ nullable: true })
+  leverage?: string;
+
   @Index()
   @Column({ nullable: true })
   txHash?: string;

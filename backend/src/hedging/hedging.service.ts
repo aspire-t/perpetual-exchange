@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { Hedge, HedgeStatus } from '../entities/Hedge.entity';
 import { Position } from '../entities/Position.entity';
 import { PriceService } from '../price/price.service';
@@ -25,6 +25,7 @@ export class HedgingService {
     private positionRepository: Repository<Position>,
     private readonly priceService: PriceService,
     private readonly hyperliquidClient: HyperliquidClient,
+    private dataSource: DataSource,
   ) {}
 
   /**
@@ -36,36 +37,44 @@ export class HedgingService {
   async openHedge(
     positionId: string,
   ): Promise<{ success: boolean; data?: any; error?: string }> {
-    // Find the position
-    const position = await this.positionRepository.findOne({
-      where: { id: positionId },
-    });
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    if (!position) {
-      return { success: false, error: 'Position not found' };
-    }
-
-    // Check if hedge already exists
-    const existingHedge = await this.hedgeRepository.findOne({
-      where: { positionId },
-    });
-
-    if (existingHedge) {
-      return {
-        success: false,
-        error: 'Hedge already exists for this position',
-      };
-    }
-
-    // Create opposite hedge: long position -> short hedge, short position -> long hedge
-    const hedge = this.hedgeRepository.create();
-    hedge.positionId = positionId;
-    hedge.size = position.size;
-    hedge.entryPrice = position.entryPrice;
-    hedge.isShort = position.isLong; // Opposite direction
-    hedge.status = HedgeStatus.PENDING;
+    let hedge: Hedge | null = null;
 
     try {
+      // Find the position
+      const position = await queryRunner.manager.findOne(Position, {
+        where: { id: positionId },
+      });
+
+      if (!position) {
+        await queryRunner.release();
+        return { success: false, error: 'Position not found' };
+      }
+
+      // Check if hedge already exists
+      const existingHedge = await queryRunner.manager.findOne(Hedge, {
+        where: { positionId },
+      });
+
+      if (existingHedge) {
+        await queryRunner.release();
+        return {
+          success: false,
+          error: 'Hedge already exists for this position',
+        };
+      }
+
+      // Create opposite hedge: long position -> short hedge, short position -> long hedge
+      hedge = queryRunner.manager.create(Hedge);
+      hedge.positionId = positionId;
+      hedge.size = position.size;
+      hedge.entryPrice = position.entryPrice;
+      hedge.isShort = position.isLong; // Opposite direction
+      hedge.status = HedgeStatus.PENDING;
+
       // Place order on Hyperliquid
       const orderResult = await this.hyperliquidClient.placeOrder(
         'ETH', // Assuming ETH perpetual
@@ -75,7 +84,9 @@ export class HedgingService {
 
       if (!orderResult.success) {
         hedge.status = HedgeStatus.FAILED;
-        await this.hedgeRepository.save(hedge);
+        await queryRunner.manager.save(hedge);
+        await queryRunner.commitTransaction();
+        await queryRunner.release();
 
         return {
           success: false,
@@ -90,7 +101,8 @@ export class HedgingService {
         hedge.entryPrice = orderResult.data.price;
       }
 
-      await this.hedgeRepository.save(hedge);
+      await queryRunner.manager.save(hedge);
+      await queryRunner.commitTransaction();
 
       this.logger.log(
         `Hedge opened successfully for position ${positionId}: OrderId=${orderResult.data?.orderId}`,
@@ -110,8 +122,17 @@ export class HedgingService {
         },
       };
     } catch (error) {
-      hedge.status = HedgeStatus.FAILED;
-      await this.hedgeRepository.save(hedge);
+      await queryRunner.rollbackTransaction();
+
+      if (hedge) {
+        hedge.status = HedgeStatus.FAILED;
+        try {
+          await queryRunner.manager.save(hedge);
+          await queryRunner.commitTransaction();
+        } catch (saveError) {
+          // Ignore save error in catch block
+        }
+      }
 
       this.logger.error(`Failed to open hedge: ${error.message}`);
 
@@ -119,6 +140,8 @@ export class HedgingService {
         success: false,
         error: `Failed to open hedge: ${error.message}`,
       };
+    } finally {
+      await queryRunner.release();
     }
   }
 
@@ -129,23 +152,30 @@ export class HedgingService {
   async closeHedge(
     hedgeId: string,
   ): Promise<{ success: boolean; data?: any; error?: string }> {
-    const hedge = await this.hedgeRepository.findOne({
-      where: { id: hedgeId },
-    });
-
-    if (!hedge) {
-      return { success: false, error: 'Hedge not found' };
-    }
-
-    if (hedge.status === HedgeStatus.CLOSED) {
-      return { success: false, error: 'Hedge is already closed' };
-    }
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
     try {
+      const hedge = await queryRunner.manager.findOne(Hedge, {
+        where: { id: hedgeId },
+      });
+
+      if (!hedge) {
+        await queryRunner.release();
+        return { success: false, error: 'Hedge not found' };
+      }
+
+      if (hedge.status === HedgeStatus.CLOSED) {
+        await queryRunner.release();
+        return { success: false, error: 'Hedge is already closed' };
+      }
+
       // Close position on Hyperliquid
       const closeResult = await this.hyperliquidClient.closePosition('ETH');
 
       if (!closeResult.success) {
+        await queryRunner.release();
         return {
           success: false,
           error: `Failed to close hedge on Hyperliquid: ${closeResult.error}`,
@@ -174,7 +204,8 @@ export class HedgingService {
       hedge.closedAt = new Date();
       hedge.hyperliquidOrderId = closeResult.data?.orderId;
 
-      await this.hedgeRepository.save(hedge);
+      await queryRunner.manager.save(hedge);
+      await queryRunner.commitTransaction();
 
       this.logger.log(
         `Hedge closed successfully: id=${hedgeId}, pnl=${pnl.toString()}`,
@@ -192,12 +223,15 @@ export class HedgingService {
         },
       };
     } catch (error) {
+      await queryRunner.rollbackTransaction();
       this.logger.error(`Failed to close hedge: ${error.message}`);
 
       return {
         success: false,
         error: `Failed to close hedge: ${error.message}`,
       };
+    } finally {
+      await queryRunner.release();
     }
   }
 
@@ -234,14 +268,21 @@ export class HedgingService {
   }
 
   /**
-   * Get all hedges for a position
+   * Get all hedges for a position with pagination
+   * @param positionId - The position ID to filter hedges
+   * @param page - Page number (default: 1)
+   * @param pageSize - Number of records per page (default: 50)
    */
   async getPositionHedges(
     positionId: string,
+    page: number = 1,
+    pageSize: number = 50,
   ): Promise<{ success: boolean; data?: any[]; error?: string }> {
     const hedges = await this.hedgeRepository.find({
       where: { positionId },
       order: { createdAt: 'DESC' },
+      take: pageSize,
+      skip: (page - 1) * pageSize,
     });
 
     return {
@@ -280,26 +321,33 @@ export class HedgingService {
   async syncHedgeStatus(
     hedgeId: string,
   ): Promise<{ success: boolean; data?: any; error?: string }> {
-    const hedge = await this.hedgeRepository.findOne({
-      where: { id: hedgeId },
-    });
-
-    if (!hedge) {
-      return { success: false, error: 'Hedge not found' };
-    }
-
-    if (hedge.status === HedgeStatus.CLOSED) {
-      return {
-        success: true,
-        data: { synced: false, reason: 'Already closed' },
-      };
-    }
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
     try {
+      const hedge = await queryRunner.manager.findOne(Hedge, {
+        where: { id: hedgeId },
+      });
+
+      if (!hedge) {
+        await queryRunner.release();
+        return { success: false, error: 'Hedge not found' };
+      }
+
+      if (hedge.status === HedgeStatus.CLOSED) {
+        await queryRunner.release();
+        return {
+          success: true,
+          data: { synced: false, reason: 'Already closed' },
+        };
+      }
+
       // Get position from Hyperliquid
       const positionResult = await this.hyperliquidClient.getPosition('ETH');
 
       if (!positionResult.success) {
+        await queryRunner.release();
         return {
           success: false,
           error: positionResult.error || 'Failed to sync status',
@@ -312,7 +360,8 @@ export class HedgingService {
       hedge.entryPrice = hlPosition.entryPx;
       hedge.pnl = hlPosition.unrealizedPnl;
 
-      await this.hedgeRepository.save(hedge);
+      await queryRunner.manager.save(hedge);
+      await queryRunner.commitTransaction();
 
       return {
         success: true,
@@ -324,10 +373,13 @@ export class HedgingService {
         },
       };
     } catch (error) {
+      await queryRunner.rollbackTransaction();
       return {
         success: false,
         error: `Failed to sync hedge status: ${error.message}`,
       };
+    } finally {
+      await queryRunner.release();
     }
   }
 

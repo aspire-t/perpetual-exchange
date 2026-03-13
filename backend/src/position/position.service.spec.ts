@@ -434,4 +434,247 @@ describe('PositionService', () => {
       expect(pnl).toBe(BigInt('-100000000')); // $100 loss on short
     });
   });
+
+  describe('increasePosition', () => {
+    const mockPosition = {
+      id: 'position-1',
+      userId: 'user-1',
+      size: BigInt('1000000000000000000'), // 1 token
+      entryPrice: BigInt('2000000000'), // $2000
+      isLong: true,
+      isOpen: true,
+      createdAt: new Date(),
+    } as Position;
+
+    it('should increase position size and recalculate average entry price', async () => {
+      const additionalSize = BigInt('500000000000000000'); // 0.5 token
+      const newEntryPrice = BigInt('2200000000'); // $2200
+
+      jest.spyOn(positionRepository, 'findOne').mockResolvedValue(mockPosition);
+      jest.spyOn(positionRepository, 'save').mockResolvedValue({
+        ...mockPosition,
+        size: BigInt('1500000000000000000'),
+        entryPrice: BigInt('2066666666'),
+      } as Position);
+
+      const result = await positionService.increasePosition(
+        'position-1',
+        additionalSize,
+        newEntryPrice,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data?.size).toBe('1500000000000000000');
+      // Weighted average: (1*2000 + 0.5*2200) / 1.5 = 2066.67
+      expect(result.data?.entryPrice).toBe('2066666666');
+      expect(result.data?.averageEntryPrice).toBe('2066666666');
+    });
+
+    it('should return error when position not found', async () => {
+      jest.spyOn(positionRepository, 'findOne').mockResolvedValue(null);
+
+      const result = await positionService.increasePosition(
+        'non-existent-id',
+        BigInt('500000000000000000'),
+        BigInt('2200000000'),
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Position not found');
+    });
+
+    it('should return error when position is closed', async () => {
+      const closedPosition = { ...mockPosition, isOpen: false } as Position;
+
+      jest
+        .spyOn(positionRepository, 'findOne')
+        .mockResolvedValue(closedPosition);
+
+      const result = await positionService.increasePosition(
+        'position-1',
+        BigInt('500000000000000000'),
+        BigInt('2200000000'),
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Position is not open');
+    });
+
+    it('should return error when additional size is invalid (zero)', async () => {
+      const result = await positionService.increasePosition(
+        'position-1',
+        BigInt('0'),
+        BigInt('2200000000'),
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Invalid size');
+    });
+
+    it('should return error when additional size is negative', async () => {
+      const result = await positionService.increasePosition(
+        'position-1',
+        BigInt('-100'),
+        BigInt('2200000000'),
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Invalid size');
+    });
+  });
+
+  describe('reducePosition', () => {
+    const mockOpenPosition = {
+      id: 'position-1',
+      userId: 'user-1',
+      size: BigInt('1000000000000000000'), // 1 token
+      entryPrice: BigInt('2000000000'), // $2000
+      isLong: true,
+      isOpen: true,
+      createdAt: new Date(),
+    } as Position;
+
+    it('should reduce position size and calculate realized PnL', async () => {
+      const reduceSize = BigInt('300000000000000000'); // 0.3 token
+      const currentPrice = BigInt('2100000000'); // $2100
+
+      jest
+        .spyOn(positionRepository, 'findOne')
+        .mockResolvedValue(mockOpenPosition);
+      jest.spyOn(positionRepository, 'save').mockResolvedValue({
+        ...mockOpenPosition,
+        size: BigInt('700000000000000000'),
+      } as Position);
+
+      const result = await positionService.reducePosition(
+        'position-1',
+        reduceSize,
+        currentPrice,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data?.size).toBe('700000000000000000');
+      expect(result.data?.isOpen).toBe(true);
+      // PnL for 0.3 token: (2100 - 2000) * 0.3 = 30, but in wei: (100000000 * 3e17) / 1e18 = 30000000
+      expect(result.data?.realizedPnl).toBe('30000000');
+    });
+
+    it('should close position when reduced to zero', async () => {
+      const reduceSize = BigInt('1000000000000000000'); // Full size
+      const currentPrice = BigInt('2100000000');
+
+      // Fresh mock with full size
+      const fullPosition = {
+        id: 'position-1',
+        userId: 'user-1',
+        size: BigInt('1000000000000000000'), // 1 token (full size)
+        entryPrice: BigInt('2000000000'),
+        isLong: true,
+        isOpen: true,
+        createdAt: new Date(),
+      } as Position;
+
+      jest.spyOn(positionRepository, 'findOne').mockResolvedValue(fullPosition);
+      jest.spyOn(positionRepository, 'save').mockResolvedValue({
+        ...fullPosition,
+        size: '0',
+        isOpen: false,
+        exitPrice: currentPrice.toString(),
+        closedAt: new Date(),
+      } as Position);
+
+      const result = await positionService.reducePosition(
+        'position-1',
+        reduceSize,
+        currentPrice,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data?.size).toBe('0');
+      expect(result.data?.isOpen).toBe(false);
+      // Full PnL: (2100 - 2000) * 1 = 100, in wei: (100000000 * 1e18) / 1e18 = 100000000
+      expect(result.data?.realizedPnl).toBe('100000000');
+    });
+
+    it('should return error when reduce size exceeds position size', async () => {
+      const reduceSize = BigInt('2000000000000000000'); // 2 tokens, more than position
+
+      jest
+        .spyOn(positionRepository, 'findOne')
+        .mockResolvedValue(mockOpenPosition);
+
+      const result = await positionService.reducePosition(
+        'position-1',
+        reduceSize,
+        BigInt('2100000000'),
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('exceeds position size');
+    });
+
+    it('should return error when position not found', async () => {
+      jest.spyOn(positionRepository, 'findOne').mockResolvedValue(null);
+
+      const result = await positionService.reducePosition(
+        'non-existent-id',
+        BigInt('300000000000000000'),
+        BigInt('2100000000'),
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Position not found');
+    });
+
+    it('should return error when position is closed', async () => {
+      const closedPosition = { ...mockOpenPosition, isOpen: false } as Position;
+
+      jest
+        .spyOn(positionRepository, 'findOne')
+        .mockResolvedValue(closedPosition);
+
+      const result = await positionService.reducePosition(
+        'position-1',
+        BigInt('300000000000000000'),
+        BigInt('2100000000'),
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Position is not open');
+    });
+
+    it('should return error when reduce size is invalid (zero)', async () => {
+      const result = await positionService.reducePosition(
+        'position-1',
+        BigInt('0'),
+        BigInt('2100000000'),
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Invalid size');
+    });
+
+    it('should calculate realized loss correctly for long position', async () => {
+      const reduceSize = BigInt('500000000000000000'); // 0.5 token
+      const currentPrice = BigInt('1900000000'); // $1900, price went down
+
+      jest
+        .spyOn(positionRepository, 'findOne')
+        .mockResolvedValue(mockOpenPosition);
+      jest.spyOn(positionRepository, 'save').mockResolvedValue({
+        ...mockOpenPosition,
+        size: BigInt('500000000000000000'),
+      } as Position);
+
+      const result = await positionService.reducePosition(
+        'position-1',
+        reduceSize,
+        currentPrice,
+      );
+
+      expect(result.success).toBe(true);
+      // Loss for 0.5 token: (1900 - 2000) * 0.5 = -50, in wei: (-100000000 * 5e17) / 1e18 = -50000000
+      expect(result.data?.realizedPnl).toBe('-50000000');
+    });
+  });
 });

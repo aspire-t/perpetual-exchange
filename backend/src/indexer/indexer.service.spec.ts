@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { IndexerService } from './indexer.service';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { User } from '../entities/User.entity';
 import { Deposit } from '../entities/Deposit.entity';
 import { Withdrawal } from '../entities/Withdrawal.entity';
@@ -37,6 +37,23 @@ describe('IndexerService', () => {
     save: jest.fn(),
   };
 
+  const mockQueryRunner = {
+    connect: jest.fn(),
+    startTransaction: jest.fn(),
+    commitTransaction: jest.fn(),
+    rollbackTransaction: jest.fn(),
+    release: jest.fn(),
+    manager: {
+      findOne: jest.fn(),
+      create: jest.fn(),
+      save: jest.fn(),
+    },
+  };
+
+  const mockDataSource = {
+    createQueryRunner: jest.fn().mockReturnValue(mockQueryRunner),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -56,6 +73,10 @@ describe('IndexerService', () => {
         {
           provide: getRepositoryToken(ProcessedEvent),
           useValue: mockProcessedEventRepository,
+        },
+        {
+          provide: DataSource,
+          useValue: mockDataSource,
         },
       ],
     }).compile();
@@ -100,28 +121,40 @@ describe('IndexerService', () => {
         amount,
       } as ProcessedEvent;
 
-      mockUserRepository.findOne.mockResolvedValue(user);
-      mockProcessedEventRepository.findOne.mockResolvedValue(null);
-      mockDepositRepository.findOne.mockResolvedValue(null);
-      mockDepositRepository.create.mockImplementation(() => {
-        const d = {} as Deposit;
-        d.user = user;
-        d.amount = amount.toString();
-        d.txHash = txHash;
-        d.status = 'confirmed';
-        return d;
+      mockQueryRunner.manager.findOne.mockImplementation((entity, options) => {
+        if (typeof entity === 'function' && entity.name === 'User') {
+          return Promise.resolve({ ...user });
+        }
+        if (typeof entity === 'function' && entity.name === 'ProcessedEvent') {
+          return Promise.resolve(null);
+        }
+        if (typeof entity === 'function' && entity.name === 'Deposit') {
+          return Promise.resolve(null);
+        }
+        return Promise.resolve(null);
       });
-      mockProcessedEventRepository.create.mockImplementation(() => {
-        const pe = {} as ProcessedEvent;
-        pe.eventTxHash = txHash;
-        pe.eventName = 'Deposit';
-        pe.blockNumber = blockNumber;
-        pe.userId = user.id;
-        pe.amount = amount.toString();
-        return pe;
+      mockQueryRunner.manager.create.mockImplementation((entity, data) => {
+        const obj = { ...data };
+        if (typeof entity === 'function' && entity.name === 'Deposit') {
+          obj.user = user;
+          obj.amount = amount.toString();
+          obj.txHash = txHash;
+          obj.status = 'confirmed';
+        } else if (
+          typeof entity === 'function' &&
+          entity.name === 'ProcessedEvent'
+        ) {
+          obj.eventTxHash = txHash;
+          obj.eventName = 'Deposit';
+          obj.blockNumber = blockNumber;
+          obj.userId = user.id;
+          obj.amount = amount.toString();
+        }
+        return obj;
       });
-      mockDepositRepository.save.mockResolvedValue(deposit);
-      mockProcessedEventRepository.save.mockResolvedValue(processedEvent);
+      mockQueryRunner.manager.save.mockImplementation(async (obj) => ({
+        ...obj,
+      }));
 
       const result = await indexerService.processDepositEvent(
         userAddress,
@@ -138,8 +171,8 @@ describe('IndexerService', () => {
           amount: amount.toString(),
         },
       });
-      expect(mockDepositRepository.create).toHaveBeenCalled();
-      expect(mockProcessedEventRepository.create).toHaveBeenCalled();
+      expect(mockQueryRunner.manager.create).toHaveBeenCalledTimes(2);
+      expect(mockQueryRunner.manager.save).toHaveBeenCalledTimes(2);
     });
 
     it('should return error when user not found', async () => {
@@ -148,7 +181,12 @@ describe('IndexerService', () => {
       const txHash = '0xabc123';
       const blockNumber = 100;
 
-      mockUserRepository.findOne.mockResolvedValue(null);
+      mockQueryRunner.manager.findOne.mockImplementation((entity, options) => {
+        if (typeof entity === 'function' && entity.name === 'User') {
+          return Promise.resolve(null);
+        }
+        return Promise.resolve(null);
+      });
 
       const result = await indexerService.processDepositEvent(
         userAddress,
@@ -176,8 +214,15 @@ describe('IndexerService', () => {
         blockNumber,
       } as ProcessedEvent;
 
-      mockUserRepository.findOne.mockResolvedValue(user);
-      mockProcessedEventRepository.findOne.mockResolvedValue(existingEvent);
+      mockQueryRunner.manager.findOne.mockImplementation((entity, options) => {
+        if (typeof entity === 'function' && entity.name === 'User') {
+          return Promise.resolve({ ...user });
+        }
+        if (typeof entity === 'function' && entity.name === 'ProcessedEvent') {
+          return Promise.resolve({ ...existingEvent });
+        }
+        return Promise.resolve(null);
+      });
 
       const result = await indexerService.processDepositEvent(
         userAddress,
@@ -191,7 +236,7 @@ describe('IndexerService', () => {
         skipped: true,
         reason: 'Event already processed',
       });
-      expect(mockDepositRepository.create).not.toHaveBeenCalled();
+      expect(mockQueryRunner.manager.create).not.toHaveBeenCalled();
     });
 
     it('should skip processing when deposit already exists', async () => {
@@ -209,9 +254,18 @@ describe('IndexerService', () => {
         status: 'confirmed',
       } as Deposit;
 
-      mockUserRepository.findOne.mockResolvedValue(user);
-      mockProcessedEventRepository.findOne.mockResolvedValue(null);
-      mockDepositRepository.findOne.mockResolvedValue(existingDeposit);
+      mockQueryRunner.manager.findOne.mockImplementation((entity, options) => {
+        if (typeof entity === 'function' && entity.name === 'User') {
+          return Promise.resolve({ ...user });
+        }
+        if (typeof entity === 'function' && entity.name === 'ProcessedEvent') {
+          return Promise.resolve(null);
+        }
+        if (typeof entity === 'function' && entity.name === 'Deposit') {
+          return Promise.resolve({ ...existingDeposit });
+        }
+        return Promise.resolve(null);
+      });
 
       const result = await indexerService.processDepositEvent(
         userAddress,
@@ -251,27 +305,37 @@ describe('IndexerService', () => {
         amount,
       } as ProcessedEvent;
 
-      mockUserRepository.findOne.mockResolvedValue(user);
-      mockProcessedEventRepository.findOne.mockResolvedValue(null);
-      mockWithdrawalRepository.create.mockImplementation(() => {
-        const w = {} as Withdrawal;
-        w.user = user;
-        w.amount = amount.toString();
-        w.status = 'approved';
-        w.txHash = txHash;
-        return w;
+      mockQueryRunner.manager.findOne.mockImplementation((entity, options) => {
+        if (typeof entity === 'function' && entity.name === 'User') {
+          return Promise.resolve({ ...user });
+        }
+        if (typeof entity === 'function' && entity.name === 'ProcessedEvent') {
+          return Promise.resolve(null);
+        }
+        return Promise.resolve(null);
       });
-      mockProcessedEventRepository.create.mockImplementation(() => {
-        const pe = {} as ProcessedEvent;
-        pe.eventTxHash = txHash;
-        pe.eventName = 'Withdraw';
-        pe.blockNumber = blockNumber;
-        pe.userId = user.id;
-        pe.amount = amount.toString();
-        return pe;
+      mockQueryRunner.manager.create.mockImplementation((entity, data) => {
+        const obj = { ...data };
+        if (typeof entity === 'function' && entity.name === 'Withdrawal') {
+          obj.user = user;
+          obj.amount = amount.toString();
+          obj.status = 'approved';
+          obj.txHash = txHash;
+        } else if (
+          typeof entity === 'function' &&
+          entity.name === 'ProcessedEvent'
+        ) {
+          obj.eventTxHash = txHash;
+          obj.eventName = 'Withdraw';
+          obj.blockNumber = blockNumber;
+          obj.userId = user.id;
+          obj.amount = amount.toString();
+        }
+        return obj;
       });
-      mockWithdrawalRepository.save.mockResolvedValue(withdrawal);
-      mockProcessedEventRepository.save.mockResolvedValue(processedEvent);
+      mockQueryRunner.manager.save.mockImplementation(async (obj) => ({
+        ...obj,
+      }));
 
       const result = await indexerService.processWithdrawEvent(
         userAddress,
@@ -287,8 +351,8 @@ describe('IndexerService', () => {
           amount: amount.toString(),
         },
       });
-      expect(mockWithdrawalRepository.create).toHaveBeenCalled();
-      expect(mockProcessedEventRepository.create).toHaveBeenCalled();
+      expect(mockQueryRunner.manager.create).toHaveBeenCalledTimes(2);
+      expect(mockQueryRunner.manager.save).toHaveBeenCalledTimes(2);
     });
 
     it('should return error when user not found', async () => {
@@ -297,7 +361,12 @@ describe('IndexerService', () => {
       const txHash = '0xdef456';
       const blockNumber = 101;
 
-      mockUserRepository.findOne.mockResolvedValue(null);
+      mockQueryRunner.manager.findOne.mockImplementation((entity, options) => {
+        if (typeof entity === 'function' && entity.name === 'User') {
+          return Promise.resolve(null);
+        }
+        return Promise.resolve(null);
+      });
 
       const result = await indexerService.processWithdrawEvent(
         userAddress,
@@ -325,8 +394,15 @@ describe('IndexerService', () => {
         blockNumber,
       } as ProcessedEvent;
 
-      mockUserRepository.findOne.mockResolvedValue(user);
-      mockProcessedEventRepository.findOne.mockResolvedValue(existingEvent);
+      mockQueryRunner.manager.findOne.mockImplementation((entity, options) => {
+        if (typeof entity === 'function' && entity.name === 'User') {
+          return Promise.resolve({ ...user });
+        }
+        if (typeof entity === 'function' && entity.name === 'ProcessedEvent') {
+          return Promise.resolve({ ...existingEvent });
+        }
+        return Promise.resolve(null);
+      });
 
       const result = await indexerService.processWithdrawEvent(
         userAddress,
@@ -340,7 +416,7 @@ describe('IndexerService', () => {
         skipped: true,
         reason: 'Event already processed',
       });
-      expect(mockWithdrawalRepository.create).not.toHaveBeenCalled();
+      expect(mockQueryRunner.manager.create).not.toHaveBeenCalled();
     });
   });
 });
