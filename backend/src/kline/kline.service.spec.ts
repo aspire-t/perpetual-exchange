@@ -10,10 +10,26 @@ describe('KlineService', () => {
   describe('aggregateCandle', () => {
     it('should aggregate OHLCV from price data', () => {
       const prices = [
-        { price: '2000000000', volume: '100000000000000000', timestamp: new Date('2024-01-01T00:00:00Z') },
-        { price: '2050000000', volume: '150000000000000000', timestamp: new Date('2024-01-01T00:00:30Z') },
-        { price: '1950000000', volume: '120000000000000000', timestamp: new Date('2024-01-01T00:01:00Z') },
-        { price: '2030000000', volume: '130000000000000000', timestamp: new Date('2024-01-01T00:01:30Z') },
+        {
+          price: '2000000000',
+          volume: '100000000000000000',
+          timestamp: new Date('2024-01-01T00:00:00Z'),
+        },
+        {
+          price: '2050000000',
+          volume: '150000000000000000',
+          timestamp: new Date('2024-01-01T00:00:30Z'),
+        },
+        {
+          price: '1950000000',
+          volume: '120000000000000000',
+          timestamp: new Date('2024-01-01T00:01:00Z'),
+        },
+        {
+          price: '2030000000',
+          volume: '130000000000000000',
+          timestamp: new Date('2024-01-01T00:01:30Z'),
+        },
       ];
 
       const candle = klineService.aggregateCandle(prices, '1m');
@@ -26,7 +42,79 @@ describe('KlineService', () => {
     });
 
     it('should throw error for empty price data', () => {
-      expect(() => klineService.aggregateCandle([], '1m')).toThrow('No price data to aggregate');
+      expect(() => klineService.aggregateCandle([], '1m')).toThrow(
+        'No price data to aggregate',
+      );
+    });
+  });
+
+  describe('bucketByTimeframe', () => {
+    it('should group prices into 1m buckets', () => {
+      const prices = [
+        {
+          price: '2000000000',
+          volume: '100000000000000000',
+          timestamp: new Date('2024-01-01T00:00:00Z'),
+        },
+        {
+          price: '2010000000',
+          volume: '110000000000000000',
+          timestamp: new Date('2024-01-01T00:00:30Z'),
+        },
+        {
+          price: '2020000000',
+          volume: '120000000000000000',
+          timestamp: new Date('2024-01-01T00:01:00Z'),
+        },
+        {
+          price: '2030000000',
+          volume: '130000000000000000',
+          timestamp: new Date('2024-01-01T00:01:30Z'),
+        },
+        {
+          price: '2040000000',
+          volume: '140000000000000000',
+          timestamp: new Date('2024-01-01T00:02:00Z'),
+        },
+      ];
+
+      const buckets = klineService.bucketByTimeframe(prices, '1m');
+
+      expect(buckets.size).toBe(3);
+      expect(buckets.get('2024-01-01T00:00:00.000Z')).toHaveLength(2);
+      expect(buckets.get('2024-01-01T00:01:00.000Z')).toHaveLength(2);
+      expect(buckets.get('2024-01-01T00:02:00.000Z')).toHaveLength(1);
+    });
+
+    it('should group prices into 5m buckets', () => {
+      const prices = [
+        {
+          price: '2000000000',
+          volume: '100000000000000000',
+          timestamp: new Date('2024-01-01T00:00:00Z'),
+        },
+        {
+          price: '2010000000',
+          volume: '110000000000000000',
+          timestamp: new Date('2024-01-01T00:02:00Z'),
+        },
+        {
+          price: '2020000000',
+          volume: '120000000000000000',
+          timestamp: new Date('2024-01-01T00:05:00Z'),
+        },
+        {
+          price: '2030000000',
+          volume: '130000000000000000',
+          timestamp: new Date('2024-01-01T00:07:00Z'),
+        },
+      ];
+
+      const buckets = klineService.bucketByTimeframe(prices, '5m');
+
+      expect(buckets.size).toBe(2);
+      expect(buckets.get('2024-01-01T00:00:00.000Z')).toHaveLength(2);
+      expect(buckets.get('2024-01-01T00:05:00.000Z')).toHaveLength(2);
     });
   });
 });
