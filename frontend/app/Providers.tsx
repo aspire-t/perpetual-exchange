@@ -2,15 +2,35 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WagmiProvider } from 'wagmi';
-import { config } from './wagmi';
+import { createAppKit } from '@reown/appkit/react';
+import { wagmiAdapter, projectId, networks } from './wagmi';
 import { useState } from 'react';
 import { Toaster } from 'react-hot-toast';
+
+// Set up metadata
+const metadata = {
+  name: 'Perpetual Exchange',
+  description: 'Perpetual Exchange',
+  url: 'https://perpetual-exchange.com', // origin must match your domain & subdomain
+  icons: ['https://avatars.githubusercontent.com/u/37784886']
+};
+
+// Create the modal
+createAppKit({
+  adapters: [wagmiAdapter],
+  projectId: projectId as string,
+  networks,
+  metadata,
+  features: {
+    analytics: true // Optional - defaults to your Cloud configuration
+  }
+});
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient());
 
   return (
-    <WagmiProvider config={config}>
+    <WagmiProvider config={wagmiAdapter.wagmiConfig}>
       <QueryClientProvider client={queryClient}>
         {children}
         <Toaster

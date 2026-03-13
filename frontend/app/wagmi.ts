@@ -1,17 +1,24 @@
-import { http, createConfig } from 'wagmi';
-import { hardhat, mainnet } from 'wagmi/chains';
-import { injected } from 'wagmi/connectors';
+import { cookieStorage, createStorage } from 'wagmi';
+import { WagmiAdapter } from '@reown/appkit-adapter-wagmi';
+import { mainnet, hardhat, type AppKitNetwork } from '@reown/appkit/networks';
 
-export const config = createConfig({
-  chains: [hardhat, mainnet],
-  connectors: [
-    injected({
-      target: 'metaMask',
-      shimDisconnect: false,
-    }),
-  ],
-  transports: {
-    [hardhat.id]: http(),
-    [mainnet.id]: http(),
-  },
+// Get projectId from https://cloud.reown.com
+export const projectId = process.env.NEXT_PUBLIC_PROJECT_ID;
+
+if (!projectId) {
+  throw new Error('Project ID is not defined');
+}
+
+export const networks: [AppKitNetwork, ...AppKitNetwork[]] = [mainnet, hardhat];
+
+// Set up the Wagmi Adapter (Config)
+export const wagmiAdapter = new WagmiAdapter({
+  storage: createStorage({
+    storage: cookieStorage
+  }),
+  ssr: true,
+  projectId: projectId as string,
+  networks
 });
+
+export const config = wagmiAdapter.wagmiConfig;
