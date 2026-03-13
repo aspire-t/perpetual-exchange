@@ -4,11 +4,11 @@ import { useState } from 'react';
 import { useAccount } from 'wagmi';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Navigation } from '../components/Navigation';
+import toast from 'react-hot-toast';
 
 export default function WithdrawPage() {
   const { isConnected, address } = useAccount();
   const [amount, setAmount] = useState('');
-  const [result, setResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Fetch user balance
   const { data: balanceData } = useQuery({
@@ -41,19 +41,17 @@ export default function WithdrawPage() {
       return response.json();
     },
     onSuccess: () => {
-      setResult({ type: 'success', message: 'Withdrawal submitted successfully!' });
+      toast.success('Withdrawal submitted successfully!');
       setAmount('');
-      setTimeout(() => setResult(null), 3000);
     },
     onError: (error: Error) => {
-      setResult({ type: 'error', message: `Withdrawal failed: ${error.message}` });
-      setTimeout(() => setResult(null), 3000);
+      toast.error(`Withdrawal failed: ${error.message}`);
     },
   });
 
   const handleWithdraw = () => {
     if (!amount || Number(amount) <= 0) {
-      setResult({ type: 'error', message: 'Please enter a valid amount' });
+      toast.error('Please enter a valid amount');
       return;
     }
     withdraw.mutateAsync(amount);
@@ -120,19 +118,6 @@ export default function WithdrawPage() {
           >
             {withdraw.isPending ? 'Processing...' : 'Withdraw'}
           </button>
-
-          {/* Result Message */}
-          {result && (
-            <div
-              className={`mt-4 p-3 rounded text-sm ${
-                result.type === 'success'
-                  ? 'bg-[var(--success-green-muted)] text-[var(--success-green)] border border-[var(--success-green)]'
-                  : 'bg-[var(--danger-red-muted)] text-[var(--danger-red)] border border-[var(--danger-red)]'
-              }`}
-            >
-              {result.message}
-            </div>
-          )}
         </div>
 
         {/* Info Card */}

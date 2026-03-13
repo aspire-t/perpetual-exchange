@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import { Navigation } from '../components/Navigation';
 import { useUSDCBalance } from '../hooks/useUSDCBalance';
 import { useVaultAllowance } from '../hooks/useVaultAllowance';
 import { useApprove } from '../hooks/useApprove';
 import { useDeposit } from '../hooks/useDeposit';
+import toast from 'react-hot-toast';
 
 export default function DepositPage() {
   const { isConnected, address } = useAccount();
@@ -17,8 +18,37 @@ export default function DepositPage() {
   const { data: allowance } = useVaultAllowance(address);
 
   // Write contract state
-  const { approve, hash: approveHash, isConfirming: isApproving, isConfirmed: isApproveConfirmed, error: approveError } = useApprove();
-  const { deposit, hash: depositHash, isConfirming: isDepositing, isConfirmed: isDepositConfirmed, error: depositError } = useDeposit();
+  const { approve, hash: approveHash, isConfirming: isApproving, isConfirmed: isApproveConfirmed, error: approveError, reset: resetApprove } = useApprove();
+  const { deposit, hash: depositHash, isConfirming: isDepositing, isConfirmed: isDepositConfirmed, error: depositError, reset: resetDeposit } = useDeposit();
+
+  // Show toast on success
+  useEffect(() => {
+    if (isApproveConfirmed) {
+      toast.success('Approval confirmed!');
+      resetApprove?.();
+    }
+  }, [isApproveConfirmed, resetApprove]);
+
+  useEffect(() => {
+    if (isDepositConfirmed) {
+      toast.success('Deposit successful!');
+      resetDeposit?.();
+      setAmount('');
+    }
+  }, [isDepositConfirmed, resetDeposit]);
+
+  // Show toast on error
+  useEffect(() => {
+    if (approveError) {
+      toast.error(`Approval failed: ${approveError.message}`);
+    }
+  }, [approveError]);
+
+  useEffect(() => {
+    if (depositError) {
+      toast.error(`Deposit failed: ${depositError.message}`);
+    }
+  }, [depositError]);
 
   const handleMaxClick = () => {
     if (balance) {
@@ -143,25 +173,6 @@ export default function DepositPage() {
             {isDepositing ? 'Depositing...' : isDepositConfirmed ? '✓ Deposited' : `Deposit ${amount || '0'} USDC`}
           </button>
         </div>
-
-        {/* Error Messages */}
-        {(approveError || depositError) && (
-          <div className="mt-4 p-4 bg-red-900/20 border border-red-900 rounded-lg">
-            <p className="text-red-400 text-sm">
-              {approveError?.message || depositError?.message}
-            </p>
-          </div>
-        )}
-
-        {/* Transaction Status */}
-        {(isApproving || isDepositing || isApproveConfirmed || isDepositConfirmed) && (
-          <div className="mt-4 p-4 bg-[var(--background-tertiary)] rounded-lg">
-            {isApproving && <p className="text-[var(--text-secondary)]">Waiting for approval confirmation...</p>}
-            {isDepositing && <p className="text-[var(--text-secondary)]">Waiting for deposit confirmation...</p>}
-            {isApproveConfirmed && <p className="text-green-400">✓ Approval confirmed! You can now deposit.</p>}
-            {isDepositConfirmed && <p className="text-green-400">✓ Deposit successful!</p>}
-          </div>
-        )}
       </main>
     </div>
   );

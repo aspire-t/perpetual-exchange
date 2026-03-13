@@ -5,6 +5,7 @@ import { useDeposits } from '../hooks/useDeposits';
 import { useWithdrawals } from '../hooks/useWithdrawals';
 import { useOrders } from '../hooks/useOrders';
 import { useAccount } from 'wagmi';
+import { Navigation } from '../components/Navigation';
 
 type TabType = 'deposits' | 'withdrawals' | 'orders';
 
@@ -14,6 +15,7 @@ export default function TransactionsPage() {
 
   return (
     <div className="min-h-screen bg-[var(--background-primary)]">
+      <Navigation />
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-6">
           Transaction History
@@ -74,7 +76,17 @@ interface Deposit {
 }
 
 function DepositsTab({ userAddress }: { userAddress: string }) {
-  const { data: deposits, isLoading, error } = useDeposits(userAddress);
+  const {
+    data: deposits,
+    isLoading,
+    error,
+    totalPages,
+    currentPage,
+    hasNextPage,
+    hasPrevPage,
+    goToNextPage,
+    goToPrevPage,
+  } = useDeposits(userAddress);
 
   if (isLoading) {
     return <div className="text-[var(--text-secondary)]">Loading...</div>;
@@ -89,45 +101,55 @@ function DepositsTab({ userAddress }: { userAddress: string }) {
   }
 
   return (
-    <table className="w-full">
-      <thead>
-        <tr className="text-left text-sm text-[var(--text-secondary)]">
-          <th className="pb-3">Time</th>
-          <th className="pb-3">Amount</th>
-          <th className="pb-3">Status</th>
-          <th className="pb-3">Transaction</th>
-        </tr>
-      </thead>
-      <tbody>
-        {deposits.map((deposit) => (
-          <tr key={deposit.id} className="border-t border-[var(--border-default)]">
-            <td className="py-3 text-[var(--text-primary)]">
-              {new Date(deposit.createdAt).toLocaleString()}
-            </td>
-            <td className="py-3 text-[var(--text-primary)]">
-              {(Number(deposit.amount) / 1000000).toFixed(2)} USDC
-            </td>
-            <td className="py-3">
-              <StatusBadge status={deposit.status} />
-            </td>
-            <td className="py-3">
-              {deposit.txHash ? (
-                <a
-                  href={`https://sepolia.bscscan.com/tx/${deposit.txHash}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[var(--accent-blue)] hover:underline"
-                >
-                  {deposit.txHash.slice(0, 10)}...{deposit.txHash.slice(-8)}
-                </a>
-              ) : (
-                <span className="text-[var(--text-secondary)]">-</span>
-              )}
-            </td>
+    <>
+      <table className="w-full">
+        <thead>
+          <tr className="text-left text-sm text-[var(--text-secondary)]">
+            <th className="pb-3">Time</th>
+            <th className="pb-3">Amount</th>
+            <th className="pb-3">Status</th>
+            <th className="pb-3">Transaction</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {deposits.map((deposit) => (
+            <tr key={deposit.id} className="border-t border-[var(--border-default)]">
+              <td className="py-3 text-[var(--text-primary)]">
+                {new Date(deposit.createdAt).toLocaleString()}
+              </td>
+              <td className="py-3 text-[var(--text-primary)]">
+                {(Number(deposit.amount) / 1000000).toFixed(2)} USDC
+              </td>
+              <td className="py-3">
+                <StatusBadge status={deposit.status} />
+              </td>
+              <td className="py-3">
+                {deposit.txHash ? (
+                  <a
+                    href={`https://sepolia.bscscan.com/tx/${deposit.txHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[var(--accent-blue)] hover:underline"
+                  >
+                    {deposit.txHash.slice(0, 10)}...{deposit.txHash.slice(-8)}
+                  </a>
+                ) : (
+                  <span className="text-[var(--text-secondary)]">-</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <PaginationControls
+        currentPage={currentPage}
+        totalPages={totalPages}
+        hasNextPage={hasNextPage}
+        hasPrevPage={hasPrevPage}
+        onNext={goToNextPage}
+        onPrev={goToPrevPage}
+      />
+    </>
   );
 }
 
@@ -146,7 +168,17 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function WithdrawalsTab({ userAddress }: { userAddress: string }) {
-  const { data: withdrawals, isLoading, error } = useWithdrawals(userAddress);
+  const {
+    data: withdrawals,
+    isLoading,
+    error,
+    totalPages,
+    currentPage,
+    hasNextPage,
+    hasPrevPage,
+    goToNextPage,
+    goToPrevPage,
+  } = useWithdrawals(userAddress);
 
   if (isLoading) {
     return <div className="text-[var(--text-secondary)]">Loading...</div>;
@@ -161,45 +193,55 @@ function WithdrawalsTab({ userAddress }: { userAddress: string }) {
   }
 
   return (
-    <table className="w-full">
-      <thead>
-        <tr className="text-left text-sm text-[var(--text-secondary)]">
-          <th className="pb-3">Time</th>
-          <th className="pb-3">Amount</th>
-          <th className="pb-3">Status</th>
-          <th className="pb-3">Transaction</th>
-        </tr>
-      </thead>
-      <tbody>
-        {withdrawals.map((withdrawal) => (
-          <tr key={withdrawal.id} className="border-t border-[var(--border-default)]">
-            <td className="py-3 text-[var(--text-primary)]">
-              {new Date(withdrawal.createdAt).toLocaleString()}
-            </td>
-            <td className="py-3 text-[var(--text-primary)]">
-              {(Number(withdrawal.amount) / 1000000).toFixed(2)} USDC
-            </td>
-            <td className="py-3">
-              <WithdrawalStatusBadge status={withdrawal.status} />
-            </td>
-            <td className="py-3">
-              {withdrawal.txHash ? (
-                <a
-                  href={`https://sepolia.bscscan.com/tx/${withdrawal.txHash}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[var(--accent-blue)] hover:underline"
-                >
-                  {withdrawal.txHash.slice(0, 10)}...{withdrawal.txHash.slice(-8)}
-                </a>
-              ) : (
-                <span className="text-[var(--text-secondary)]">-</span>
-              )}
-            </td>
+    <>
+      <table className="w-full">
+        <thead>
+          <tr className="text-left text-sm text-[var(--text-secondary)]">
+            <th className="pb-3">Time</th>
+            <th className="pb-3">Amount</th>
+            <th className="pb-3">Status</th>
+            <th className="pb-3">Transaction</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {withdrawals.map((withdrawal) => (
+            <tr key={withdrawal.id} className="border-t border-[var(--border-default)]">
+              <td className="py-3 text-[var(--text-primary)]">
+                {new Date(withdrawal.createdAt).toLocaleString()}
+              </td>
+              <td className="py-3 text-[var(--text-primary)]">
+                {(Number(withdrawal.amount) / 1000000).toFixed(2)} USDC
+              </td>
+              <td className="py-3">
+                <WithdrawalStatusBadge status={withdrawal.status} />
+              </td>
+              <td className="py-3">
+                {withdrawal.txHash ? (
+                  <a
+                    href={`https://sepolia.bscscan.com/tx/${withdrawal.txHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[var(--accent-blue)] hover:underline"
+                  >
+                    {withdrawal.txHash.slice(0, 10)}...{withdrawal.txHash.slice(-8)}
+                  </a>
+                ) : (
+                  <span className="text-[var(--text-secondary)]">-</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <PaginationControls
+        currentPage={currentPage}
+        totalPages={totalPages}
+        hasNextPage={hasNextPage}
+        hasPrevPage={hasPrevPage}
+        onNext={goToNextPage}
+        onPrev={goToPrevPage}
+      />
+    </>
   );
 }
 
@@ -220,7 +262,17 @@ function WithdrawalStatusBadge({ status }: { status: string }) {
 }
 
 function OrdersTab({ userAddress }: { userAddress: string }) {
-  const { data: orders, isLoading, error } = useOrders(userAddress);
+  const {
+    data: orders,
+    isLoading,
+    error,
+    totalPages,
+    currentPage,
+    hasNextPage,
+    hasPrevPage,
+    goToNextPage,
+    goToPrevPage,
+  } = useOrders(userAddress);
 
   if (isLoading) {
     return <div className="text-[var(--text-secondary)]">Loading...</div>;
@@ -235,59 +287,69 @@ function OrdersTab({ userAddress }: { userAddress: string }) {
   }
 
   return (
-    <table className="w-full">
-      <thead>
-        <tr className="text-left text-sm text-[var(--text-secondary)]">
-          <th className="pb-3">Time</th>
-          <th className="pb-3">Side</th>
-          <th className="pb-3">Type</th>
-          <th className="pb-3">Size</th>
-          <th className="pb-3">Price</th>
-          <th className="pb-3">Status</th>
-          <th className="pb-3">Transaction</th>
-        </tr>
-      </thead>
-      <tbody>
-        {orders.map((order) => (
-          <tr key={order.id} className="border-t border-[var(--border-default)]">
-            <td className="py-3 text-[var(--text-primary)]">
-              {new Date(order.createdAt).toLocaleString()}
-            </td>
-            <td className="py-3">
-              <span className={order.side === 'long' ? 'text-green-400' : 'text-red-400'}>
-                {order.side.toUpperCase()}
-              </span>
-            </td>
-            <td className="py-3 text-[var(--text-primary)]">
-              {order.type.toUpperCase()}
-            </td>
-            <td className="py-3 text-[var(--text-primary)]">
-              {(Number(order.size) / 1000000).toFixed(2)} USDC
-            </td>
-            <td className="py-3 text-[var(--text-primary)]">
-              {order.fillPrice || order.limitPrice || '-'}
-            </td>
-            <td className="py-3">
-              <OrderStatusBadge status={order.status} />
-            </td>
-            <td className="py-3">
-              {order.txHash ? (
-                <a
-                  href={`https://sepolia.bscscan.com/tx/${order.txHash}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[var(--accent-blue)] hover:underline"
-                >
-                  {order.txHash.slice(0, 10)}...{order.txHash.slice(-8)}
-                </a>
-              ) : (
-                <span className="text-[var(--text-secondary)]">-</span>
-              )}
-            </td>
+    <>
+      <table className="w-full">
+        <thead>
+          <tr className="text-left text-sm text-[var(--text-secondary)]">
+            <th className="pb-3">Time</th>
+            <th className="pb-3">Side</th>
+            <th className="pb-3">Type</th>
+            <th className="pb-3">Size</th>
+            <th className="pb-3">Price</th>
+            <th className="pb-3">Status</th>
+            <th className="pb-3">Transaction</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {orders.map((order) => (
+            <tr key={order.id} className="border-t border-[var(--border-default)]">
+              <td className="py-3 text-[var(--text-primary)]">
+                {new Date(order.createdAt).toLocaleString()}
+              </td>
+              <td className="py-3">
+                <span className={order.side === 'long' ? 'text-green-400' : 'text-red-400'}>
+                  {order.side.toUpperCase()}
+                </span>
+              </td>
+              <td className="py-3 text-[var(--text-primary)]">
+                {order.type.toUpperCase()}
+              </td>
+              <td className="py-3 text-[var(--text-primary)]">
+                {(Number(order.size) / 1000000).toFixed(2)} USDC
+              </td>
+              <td className="py-3 text-[var(--text-primary)]">
+                {order.fillPrice || order.limitPrice || '-'}
+              </td>
+              <td className="py-3">
+                <OrderStatusBadge status={order.status} />
+              </td>
+              <td className="py-3">
+                {order.txHash ? (
+                  <a
+                    href={`https://sepolia.bscscan.com/tx/${order.txHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[var(--accent-blue)] hover:underline"
+                  >
+                    {order.txHash.slice(0, 10)}...{order.txHash.slice(-8)}
+                  </a>
+                ) : (
+                  <span className="text-[var(--text-secondary)]">-</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <PaginationControls
+        currentPage={currentPage}
+        totalPages={totalPages}
+        hasNextPage={hasNextPage}
+        hasPrevPage={hasPrevPage}
+        onNext={goToNextPage}
+        onPrev={goToPrevPage}
+      />
+    </>
   );
 }
 
@@ -304,5 +366,53 @@ function OrderStatusBadge({ status }: { status: string }) {
     <span className={`px-2 py-1 rounded text-xs ${statusColors[status] || 'bg-gray-800 text-gray-400'}`}>
       {status}
     </span>
+  );
+}
+
+interface PaginationControlsProps {
+  currentPage: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPrevPage: boolean;
+  onNext: () => void;
+  onPrev: () => void;
+}
+
+function PaginationControls({
+  currentPage,
+  totalPages,
+  hasNextPage,
+  hasPrevPage,
+  onNext,
+  onPrev,
+}: PaginationControlsProps) {
+  return (
+    <div className="flex items-center justify-between mt-4 pt-4 border-t border-[var(--border-default)]">
+      <button
+        onClick={onPrev}
+        disabled={!hasPrevPage}
+        className={`px-4 py-2 rounded font-medium transition-colors ${
+          hasPrevPage
+            ? 'text-[var(--accent-blue)] hover:bg-[var(--background-secondary)]'
+            : 'text-[var(--text-secondary)] cursor-not-allowed opacity-50'
+        }`}
+      >
+        Previous
+      </button>
+      <span className="text-[var(--text-secondary)] text-sm">
+        Page {currentPage} of {totalPages}
+      </span>
+      <button
+        onClick={onNext}
+        disabled={!hasNextPage}
+        className={`px-4 py-2 rounded font-medium transition-colors ${
+          hasNextPage
+            ? 'text-[var(--accent-blue)] hover:bg-[var(--background-secondary)]'
+            : 'text-[var(--text-secondary)] cursor-not-allowed opacity-50'
+        }`}
+      >
+        Next
+      </button>
+    </div>
   );
 }

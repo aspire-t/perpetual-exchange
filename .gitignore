@@ -127,9 +127,23 @@ dist/
 .vscode/
 *.swp
 *.swo
+.trae/
 
 # Docker
 docker-data/
 
 # Git worktrees
 .worktrees/
+
+# Local database
+*.db
+backend/dev.db
+
+# Local deployments
+contracts/deployments/localhost-deployment.json
+
+
+# Playwright reports
+playwright-report/
+test-results/
+
