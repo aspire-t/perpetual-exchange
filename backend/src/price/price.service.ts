@@ -3,9 +3,17 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 
+interface CachedValue<T> {
+  value: T;
+  timestamp: number;
+}
+
 @Injectable()
 export class PriceService {
   private readonly apiUrl: string;
+  private readonly priceCache = new Map<string, CachedValue<string>>();
+  private allPricesCache: CachedValue<Record<string, string>> | null = null;
+  private readonly CACHE_TTL = 5000;
 
   constructor(
     private readonly httpService: HttpService,
@@ -17,13 +25,21 @@ export class PriceService {
     );
   }
 
-  async getPrice(
-    coin: string,
-  ): Promise<{
+  async getPrice(coin: string): Promise<{
     success: boolean;
     data?: { coin: string; price: string };
     error?: string;
   }> {
+    const cached = this.priceCache.get(coin.toUpperCase());
+    const now = Date.now();
+
+    if (cached && now - cached.timestamp < this.CACHE_TTL) {
+      return {
+        success: true,
+        data: { coin: coin.toUpperCase(), price: cached.value },
+      };
+    }
+
     try {
       const response = await firstValueFrom(
         this.httpService.post(`${this.apiUrl}/info`, {
@@ -32,6 +48,15 @@ export class PriceService {
       );
 
       const prices = response.data as Record<string, string>;
+
+      // Cache all prices from the response
+      for (const [coinSymbol, price] of Object.entries(prices)) {
+        this.priceCache.set(coinSymbol, {
+          value: price,
+          timestamp: now,
+        });
+      }
+
       const price = prices[coin.toUpperCase()];
 
       if (!price) {
@@ -55,6 +80,18 @@ export class PriceService {
     data?: Record<string, string>;
     error?: string;
   }> {
+    const now = Date.now();
+
+    if (
+      this.allPricesCache &&
+      now - this.allPricesCache.timestamp < this.CACHE_TTL
+    ) {
+      return {
+        success: true,
+        data: this.allPricesCache.value,
+      };
+    }
+
     try {
       const response = await firstValueFrom(
         this.httpService.post(`${this.apiUrl}/info`, {
@@ -62,9 +99,15 @@ export class PriceService {
         }),
       );
 
+      const prices = response.data as Record<string, string>;
+      this.allPricesCache = {
+        value: prices,
+        timestamp: now,
+      };
+
       return {
         success: true,
-        data: response.data as Record<string, string>,
+        data: prices,
       };
     } catch (error) {
       return {
@@ -72,5 +115,40 @@ export class PriceService {
         error: `Failed to fetch prices: ${error.message}`,
       };
     }
+  }
+
+  async getPriceHistory(
+    symbol: string,
+    startTime: Date,
+    endTime: Date,
+  ): Promise<{ price: string; volume: string; timestamp: Date }[]> {
+    // For now, return mock data for testing
+    // This will be replaced with actual historical data fetch later
+    const now = Date.now();
+    const points: { price: string; volume: string; timestamp: Date }[] = [];
+
+    // Generate mock price points every 30 seconds within the time range
+    const interval = 30 * 1000; // 30 seconds
+    for (
+      let time = startTime.getTime();
+      time <= endTime.getTime();
+      time += interval
+    ) {
+      // Mock price around base price with small variation
+      const basePrice = 2000000000n; // 2000 in wei terms
+      const variation = BigInt(Math.floor(Math.random() * 100000000));
+      const price = basePrice + variation;
+
+      points.push({
+        price: price.toString(),
+        volume: (
+          BigInt(100000000000000000) +
+          BigInt(Math.floor(Math.random() * 50000000000000000))
+        ).toString(),
+        timestamp: new Date(time),
+      });
+    }
+
+    return points;
   }
 }

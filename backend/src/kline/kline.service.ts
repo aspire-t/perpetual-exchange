@@ -16,6 +16,17 @@ interface Candle {
   timestamp: Date;
 }
 
+interface KlineData {
+  symbol: string;
+  timeframe: string;
+  timestamp: Date;
+  open: string;
+  high: string;
+  low: string;
+  close: string;
+  volume: string;
+}
+
 @Injectable()
 export class KlineService {
   constructor(private priceService: PriceService) {}
@@ -102,7 +113,7 @@ export class KlineService {
     symbol: string,
     timeframe: string,
     count: number,
-  ): Promise<Partial<Candle>[]> {
+  ): Promise<KlineData[]> {
     const endTime = new Date();
     const startTime = this.getStartTime(endTime, timeframe, count);
 
@@ -117,7 +128,7 @@ export class KlineService {
     }
 
     const buckets = this.bucketByTimeframe(prices, timeframe);
-    const klines: Partial<Candle>[] = [];
+    const klines: KlineData[] = [];
 
     for (const [timestamp, bucketPrices] of buckets.entries()) {
       const candle = this.aggregateCandle(bucketPrices, timeframe);
@@ -125,7 +136,11 @@ export class KlineService {
         symbol,
         timeframe,
         timestamp: new Date(timestamp),
-        ...candle,
+        open: candle.open,
+        high: candle.high,
+        low: candle.low,
+        close: candle.close,
+        volume: candle.volume,
       });
     }
 

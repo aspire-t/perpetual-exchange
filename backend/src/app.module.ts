@@ -21,9 +21,11 @@ import { ProcessedEvent } from './entities/ProcessedEvent.entity';
 import { Order } from './entities/Order.entity';
 import { Hedge } from './entities/Hedge.entity';
 import { FundingRate } from './entities/FundingRate.entity';
+import { Kline } from './entities/Kline.entity';
 import { HedgingModule } from './hedging/hedging.module';
 import { FundingRateModule } from './funding/funding-rate.module';
 import { RiskEngineModule } from './risk/risk-engine.module';
+import { KlineModule } from './kline/kline.module';
 
 @Module({
   imports: [
@@ -50,6 +52,7 @@ import { RiskEngineModule } from './risk/risk-engine.module';
           Order,
           Hedge,
           FundingRate,
+          Kline,
         ],
         synchronize: configService.get('NODE_ENV') !== 'production',
       }),
@@ -67,6 +70,7 @@ import { RiskEngineModule } from './risk/risk-engine.module';
     HedgingModule,
     FundingRateModule,
     RiskEngineModule,
+    KlineModule,
   ],
   controllers: [AppController],
   providers: [AppService],
