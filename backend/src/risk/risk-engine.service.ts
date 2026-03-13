@@ -91,7 +91,8 @@ export class RiskEngineService {
       };
     }
 
-    const userBalance = BigInt(user.balance);
+    // Convert user balance from USDC decimals (6) to internal precision (18)
+    const userBalance = BigInt(user.balance) * BigInt(1e12);
     const requiredMargin = positionSize / BigInt(leverage);
 
     // Check if user has sufficient balance

@@ -88,11 +88,9 @@ export class BalanceService {
     const totalWithdrawals = withdrawalResult.total || '0';
     const totalInPositions = positionResult.total || '0';
 
-    // Available balance = deposits - withdrawals - positions
-    const availableBalance =
-      BigInt(totalDeposits) -
-      BigInt(totalWithdrawals) -
-      BigInt(totalInPositions);
+    // Available balance should be taken directly from user.balance source of truth
+    // The previous calculation (deposits - withdrawals - positions) missed Realized PnL
+    const availableBalance = user.balance;
 
     return {
       success: true,
@@ -100,8 +98,8 @@ export class BalanceService {
         totalDeposits,
         totalWithdrawals,
         totalInPositions,
-        availableBalance: availableBalance.toString(),
-        balance: availableBalance.toString(), // Alias for frontend compatibility
+        availableBalance: availableBalance,
+        balance: availableBalance, // Alias for frontend compatibility
       },
     };
   }

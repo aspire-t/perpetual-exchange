@@ -402,13 +402,19 @@ export class OrderService {
       return { success: false, error: riskCheck.reason };
     }
 
-    // Calculate margin required = size / leverage
+    // Calculate margin required = size / leverage (18 decimals)
     const marginRequired = size / leverage;
+
+    // Convert margin to USDC decimals (6) for balance locking
+    // Use ceiling division to ensure we lock enough funds
+    // marginRequiredUSDC = ceil(marginRequired / 1e12)
+    const marginRequiredUSDC =
+      (marginRequired + BigInt(1e12) - BigInt(1)) / BigInt(1e12);
 
     // Lock margin
     const lockResult = await this.balanceService.lockMargin(
       user.id,
-      marginRequired,
+      marginRequiredUSDC,
     );
     if (!lockResult.success) {
       return { success: false, error: lockResult.error };
@@ -433,7 +439,7 @@ export class OrderService {
 
       if (!increaseResult.success) {
         // Release margin on failure
-        await this.balanceService.releaseMargin(user.id, marginRequired);
+        await this.balanceService.releaseMargin(user.id, marginRequiredUSDC);
         return { success: false, error: increaseResult.error };
       }
 
@@ -450,7 +456,7 @@ export class OrderService {
 
       if (!openResult.success) {
         // Release margin on failure
-        await this.balanceService.releaseMargin(user.id, marginRequired);
+        await this.balanceService.releaseMargin(user.id, marginRequiredUSDC);
         return { success: false, error: openResult.error };
       }
 

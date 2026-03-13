@@ -1,3 +1,7 @@
+'use client';
+
+import { useState } from 'react';
+
 interface SymbolSelectorProps {
   symbols: string[];
   selectedSymbol: string;
@@ -9,34 +13,49 @@ export function SymbolSelector({
   selectedSymbol,
   onSymbolChange,
 }: SymbolSelectorProps) {
+  const [isOpen, setIsOpen] = useState(false);
+
   return (
-    <div className="mb-4 relative z-20">
+    <div className="mb-4 relative">
       <label htmlFor="symbol-selector" className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
         Trading Pair
       </label>
       <div className="relative">
-        <select
+        <div
           id="symbol-selector"
-          value={selectedSymbol}
-          onChange={(e) => onSymbolChange(e.target.value)}
-          className="w-full px-4 py-3 border border-[var(--border-default)] rounded-lg bg-[var(--background-tertiary)] text-[var(--text-primary)] font-mono text-base font-medium focus:outline-none focus:border-[var(--accent-blue)] focus:ring-1 focus:ring-[var(--accent-blue)] appearance-none cursor-pointer transition-colors"
-          style={{ position: 'relative', zIndex: 30 }}
+          onClick={() => setIsOpen(!isOpen)}
+          className="w-full px-4 py-3 pr-12 border border-[var(--border-default)] rounded-lg bg-[var(--background-tertiary)] text-[var(--text-primary)] font-mono text-base font-medium focus:outline-none focus:border-[var(--accent-blue)] focus:ring-1 focus:ring-[var(--accent-blue)] cursor-pointer transition-colors flex items-center justify-between"
         >
-          {symbols.map((symbol) => (
-            <option
-              key={symbol}
-              value={symbol}
-              className="bg-[var(--background-tertiary)] text-[var(--text-primary)] py-2"
-            >
-              {symbol} / USD
-            </option>
-          ))}
-        </select>
-        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-[var(--text-secondary)] z-40">
-          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <span>{selectedSymbol} / USD</span>
+          <svg className="h-5 w-5 text-[var(--text-secondary)] transition-transform" style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
           </svg>
         </div>
+
+        {isOpen && (
+          <>
+            <div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)} />
+            <div className="absolute z-20 w-full mt-1 bg-[var(--background-tertiary)] border border-[var(--border-default)] rounded-lg shadow-lg overflow-hidden">
+              {symbols.map((symbol) => (
+                <div
+                  key={symbol}
+                  onClick={() => {
+                    onSymbolChange(symbol);
+                    setIsOpen(false);
+                  }}
+                  className="px-4 py-3 cursor-pointer hover:bg-[var(--background-elevated)] text-[var(--text-primary)] font-mono text-base font-medium flex items-center justify-between"
+                >
+                  <span>{symbol} / USD</span>
+                  {selectedSymbol === symbol && (
+                    <svg className="h-5 w-5 text-[var(--accent-blue)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

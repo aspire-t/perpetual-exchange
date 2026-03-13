@@ -76,3 +76,18 @@ body {
   color: var(--text-primary);
   font-family: var(--font-sans);
 }
+
+/* Hide number input spin buttons - Webkit browsers (Chrome, Safari, Edge) */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  margin: 0 !important;
+  display: none !important;
+}
+
+/* Hide number input spin buttons - Firefox */
+input[type="number"] {
+  -moz-appearance: textfield !important;
+  appearance: textfield !important;
+}

@@ -152,20 +152,20 @@ export default function TradePage() {
   return (
     <div className="min-h-screen bg-[var(--background-primary)] text-[var(--text-primary)] font-sans">
       <Navigation />
-      
+
       <main className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Header / Stats Bar */}
         <header className="mb-6 flex items-center justify-between">
-           <div className="flex items-center gap-4">
-              <h1 className="text-2xl font-bold tracking-tight">Trade</h1>
-              <div className="h-6 w-px bg-[var(--border-default)]"></div>
-              <div className="flex items-baseline gap-2">
-                 <span className="text-[var(--text-secondary)] font-medium">{selectedSymbol}</span>
-                 <span className={`text-lg font-mono font-bold ${priceData?.success ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'}`}>
-                    {priceLoading ? 'Loading...' : priceData?.success ? `$${Number(priceData.data.price).toFixed(2)}` : '--'}
-                 </span>
-              </div>
-           </div>
+          <div className="flex items-center gap-4">
+            <h1 className="text-2xl font-bold tracking-tight">Trade</h1>
+            <div className="h-6 w-px bg-[var(--border-default)]"></div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-[var(--text-secondary)] font-medium">{selectedSymbol}</span>
+              <span className={`text-lg font-mono font-bold ${priceData?.success ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'}`}>
+                {priceLoading ? 'Loading...' : priceData?.success ? `$${Number(priceData.data.price).toFixed(2)}` : '--'}
+              </span>
+            </div>
+          </div>
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-6 items-start">
@@ -295,12 +295,12 @@ function TradeSection({ priceData, priceLoading, balanceData, faucetMutation, si
 
         <div className="p-3 bg-[var(--background-tertiary)] rounded-lg border border-[var(--border-muted)] space-y-2">
           <div className="flex justify-between text-xs">
-             <span className="text-[var(--text-secondary)]">Margin Required</span>
-             <span className="font-mono text-[var(--text-primary)]">{size ? (Number(size) / leverage).toFixed(2) : '0.00'} USDC</span>
+            <span className="text-[var(--text-secondary)]">Margin Required</span>
+            <span className="font-mono text-[var(--text-primary)]">{size ? (Number(size) / leverage).toFixed(2) : '0.00'} USDC</span>
           </div>
           <div className="flex justify-between text-xs">
-             <span className="text-[var(--text-secondary)]">Trading Fee</span>
-             <span className="font-mono text-[var(--text-primary)]">0.00 USDC</span>
+            <span className="text-[var(--text-secondary)]">Trading Fee</span>
+            <span className="font-mono text-[var(--text-primary)]">0.00 USDC</span>
           </div>
         </div>
       </div>
@@ -333,7 +333,7 @@ interface HistorySectionProps {
 }
 
 function HistorySection({ historyTab, setHistoryTab, address }: HistorySectionProps) {
-  const tabs: { id: HistoryTabType; label: string }[] = [
+  const tabs: { id: HistoryTabType; label: string; }[] = [
     { id: 'orders', label: 'Orders' },
     { id: 'deposits', label: 'Deposits' },
     { id: 'withdrawals', label: 'Withdrawals' },
@@ -347,11 +347,10 @@ function HistorySection({ historyTab, setHistoryTab, address }: HistorySectionPr
             <button
               key={tab.id}
               onClick={() => setHistoryTab(tab.id)}
-              className={`py-4 text-sm font-medium border-b-2 transition-colors ${
-                historyTab === tab.id
-                  ? 'border-[var(--accent-blue)] text-[var(--accent-blue)]'
-                  : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-              }`}
+              className={`py-4 text-sm font-medium border-b-2 transition-colors ${historyTab === tab.id
+                ? 'border-[var(--accent-blue)] text-[var(--accent-blue)]'
+                : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
             >
               {tab.label}
             </button>
@@ -379,7 +378,7 @@ interface Deposit {
   createdAt: string;
 }
 
-function DepositsTab({ userAddress }: { userAddress: string }) {
+function DepositsTab({ userAddress }: { userAddress: string; }) {
   const {
     data: deposits,
     isLoading,
@@ -451,7 +450,7 @@ function DepositsTab({ userAddress }: { userAddress: string }) {
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status }: { status: string; }) {
   const styles: Record<string, string> = {
     pending: 'bg-[var(--warning-yellow-dim)] text-[var(--warning-yellow)]',
     confirmed: 'bg-[var(--success-green-dim)] text-[var(--success-green)]',
@@ -465,7 +464,7 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function WithdrawalsTab({ userAddress }: { userAddress: string }) {
+function WithdrawalsTab({ userAddress }: { userAddress: string; }) {
   const {
     data: withdrawals,
     isLoading,
@@ -537,7 +536,7 @@ function WithdrawalsTab({ userAddress }: { userAddress: string }) {
   );
 }
 
-function WithdrawalStatusBadge({ status }: { status: string }) {
+function WithdrawalStatusBadge({ status }: { status: string; }) {
   const styles: Record<string, string> = {
     pending: 'bg-[var(--warning-yellow-dim)] text-[var(--warning-yellow)]',
     approved: 'bg-[var(--accent-blue-dim)] text-[var(--accent-blue)]',
@@ -553,7 +552,7 @@ function WithdrawalStatusBadge({ status }: { status: string }) {
   );
 }
 
-function OrdersTab({ userAddress }: { userAddress: string }) {
+function OrdersTab({ userAddress }: { userAddress: string; }) {
   const [filter, setFilter] = useState<'open' | 'history'>('open');
   const {
     data: orders,
@@ -583,21 +582,19 @@ function OrdersTab({ userAddress }: { userAddress: string }) {
       <div className="flex gap-2 mb-6">
         <button
           onClick={() => setFilter('open')}
-          className={`px-3 py-1.5 text-xs font-medium rounded border transition-all duration-200 ${
-            filter === 'open'
-              ? 'bg-[var(--background-elevated)] border-[var(--border-active)] text-[var(--text-primary)]'
-              : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--background-tertiary)]'
-          }`}
+          className={`px-3 py-1.5 text-xs font-medium rounded border transition-all duration-200 ${filter === 'open'
+            ? 'bg-[var(--background-elevated)] border-[var(--border-active)] text-[var(--text-primary)]'
+            : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--background-tertiary)]'
+            }`}
         >
           Open Orders
         </button>
         <button
           onClick={() => setFilter('history')}
-          className={`px-3 py-1.5 text-xs font-medium rounded border transition-all duration-200 ${
-            filter === 'history'
-              ? 'bg-[var(--background-elevated)] border-[var(--border-active)] text-[var(--text-primary)]'
-              : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--background-tertiary)]'
-          }`}
+          className={`px-3 py-1.5 text-xs font-medium rounded border transition-all duration-200 ${filter === 'history'
+            ? 'bg-[var(--background-elevated)] border-[var(--border-active)] text-[var(--text-primary)]'
+            : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--background-tertiary)]'
+            }`}
         >
           History
         </button>
@@ -627,9 +624,8 @@ function OrdersTab({ userAddress }: { userAddress: string }) {
                     {new Date(order.createdAt).toLocaleString()}
                   </td>
                   <td className="py-3">
-                    <span className={`text-xs font-bold uppercase ${
-                      order.side === 'long' ? 'text-[var(--success-green)]' : 'text-[var(--danger-red)]'
-                    }`}>
+                    <span className={`text-xs font-bold uppercase ${order.side === 'long' ? 'text-[var(--success-green)]' : 'text-[var(--danger-red)]'
+                      }`}>
                       {order.side}
                     </span>
                   </td>
@@ -643,7 +639,11 @@ function OrdersTab({ userAddress }: { userAddress: string }) {
                     {order.leverage ? `${order.leverage}x` : '1x'}
                   </td>
                   <td className="py-3 text-sm text-[var(--text-primary)] font-mono">
-                    {order.fillPrice || order.limitPrice || '-'}
+                    {order.fillPrice
+                      ? `$${(Number(order.fillPrice) / 1e18).toFixed(2)}`
+                      : order.limitPrice
+                        ? `$${(Number(order.limitPrice) / 1e18).toFixed(2)}`
+                        : '-'}
                   </td>
                   <td className="py-3">
                     <OrderStatusBadge status={order.status} />
@@ -680,7 +680,7 @@ function OrdersTab({ userAddress }: { userAddress: string }) {
   );
 }
 
-function OrderStatusBadge({ status }: { status: string }) {
+function OrderStatusBadge({ status }: { status: string; }) {
   const styles: Record<string, string> = {
     pending: 'bg-[var(--warning-yellow-dim)] text-[var(--warning-yellow)]',
     open: 'bg-[var(--accent-blue-dim)] text-[var(--accent-blue)]',
@@ -698,7 +698,7 @@ function OrderStatusBadge({ status }: { status: string }) {
 
 // Utility Components for cleaner code
 
-function LoadingState({ text }: { text: string }) {
+function LoadingState({ text }: { text: string; }) {
   return (
     <div className="flex items-center justify-center py-20">
       <div className="flex flex-col items-center gap-3">
@@ -709,7 +709,7 @@ function LoadingState({ text }: { text: string }) {
   );
 }
 
-function ErrorState({ message }: { message: string }) {
+function ErrorState({ message }: { message: string; }) {
   return (
     <div className="flex items-center justify-center py-12">
       <div className="text-[var(--danger-red)] bg-[var(--danger-red-dim)] px-4 py-3 rounded-lg text-sm border border-[var(--danger-red-bg)]">
@@ -719,7 +719,7 @@ function ErrorState({ message }: { message: string }) {
   );
 }
 
-function EmptyState({ message }: { message: string }) {
+function EmptyState({ message }: { message: string; }) {
   return (
     <div className="flex flex-col items-center justify-center py-16 text-[var(--text-muted)]">
       <svg className="w-12 h-12 mb-3 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -752,30 +752,28 @@ function PaginationControls({
       <button
         onClick={onPrev}
         disabled={!hasPrevPage}
-        className={`flex items-center gap-1 px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-          hasPrevPage
-            ? 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--background-tertiary)]'
-            : 'text-[var(--text-muted)] cursor-not-allowed opacity-30'
-        }`}
+        className={`flex items-center gap-1 px-3 py-1.5 rounded text-sm font-medium transition-colors ${hasPrevPage
+          ? 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--background-tertiary)]'
+          : 'text-[var(--text-muted)] cursor-not-allowed opacity-30'
+          }`}
       >
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
         </svg>
         Prev
       </button>
-      
+
       <div className="text-xs text-[var(--text-muted)] font-mono">
         Page {currentPage} of {totalPages}
       </div>
-      
+
       <button
         onClick={onNext}
         disabled={!hasNextPage}
-        className={`flex items-center gap-1 px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-          hasNextPage
-            ? 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--background-tertiary)]'
-            : 'text-[var(--text-muted)] cursor-not-allowed opacity-30'
-        }`}
+        className={`flex items-center gap-1 px-3 py-1.5 rounded text-sm font-medium transition-colors ${hasNextPage
+          ? 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--background-tertiary)]'
+          : 'text-[var(--text-muted)] cursor-not-allowed opacity-30'
+          }`}
       >
         Next
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
