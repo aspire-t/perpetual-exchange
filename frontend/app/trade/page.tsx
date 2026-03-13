@@ -562,7 +562,7 @@ function OrdersTab({ userAddress }: { userAddress: string }) {
                 {order.type.toUpperCase()}
               </td>
               <td className="py-3 text-[var(--text-primary)]">
-                {(Number(order.size) / 1000000).toFixed(2)} USDC
+                {(Number(order.size) / 1e18).toFixed(2)} USDC
               </td>
               <td className="py-3 text-[var(--text-primary)]">
                 {order.fillPrice || order.limitPrice || '-'}
