@@ -10,18 +10,20 @@ A decentralized perpetual futures exchange built on Next.js and NestJS.
 - **Deposit and withdraw** USDC tokens via smart contract
 - **Wallet integration** via wagmi/viem
 - **Responsive UI** with dark mode support
-- **K-line charts** for technical analysis
 
 ## Screenshots
 
 ### Home Page
-![Home Page](image/home.png)
+
+!\[Home Page]\(image/home.png null)
 
 ### Trading Interface
-![Trading Interface](image/trade.png)
+
+!\[Trading Interface]\(image/trade.png null)
 
 ### Wallet Connection
-![Wallet Connection](image/connect-wallet.png)
+
+!\[Wallet Connection]\(image/connect-wallet.png null)
 
 ### Bonus Features
 
@@ -48,6 +50,7 @@ docker-compose up -d
 ```
 
 This starts:
+
 - PostgreSQL on port 5432
 - Hardhat local blockchain on port 8545
 
@@ -91,7 +94,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000 to start trading.
+Open <http://localhost:3000> to start trading.
 
 ## System Architecture
 
@@ -119,18 +122,18 @@ Open http://localhost:3000 to start trading.
 
 ### Tech Stack
 
-| Layer | Technology |
-|-------|------------|
-| Frontend | Next.js 16, React 19, TypeScript, Tailwind CSS 4 |
-| Frontend State | wagmi, viem, TanStack Query |
-| Frontend Testing | Jest, React Testing Library, Playwright |
-| Backend | NestJS, TypeScript, TypeORM |
-| Backend Testing | Jest, Supertest |
-| Database | PostgreSQL (prod), SQLite (dev) |
-| Smart Contracts | Solidity 0.8.28, Hardhat |
-| Blockchain | Hardhat Network (local), Sepolia (prod) |
-| External DEX | Hyperliquid API |
-| Containerization | Docker Compose |
+| Layer            | Technology                                       |
+| ---------------- | ------------------------------------------------ |
+| Frontend         | Next.js 16, React 19, TypeScript, Tailwind CSS 4 |
+| Frontend State   | wagmi, viem, TanStack Query                      |
+| Frontend Testing | Jest, React Testing Library, Playwright          |
+| Backend          | NestJS, TypeScript, TypeORM                      |
+| Backend Testing  | Jest, Supertest                                  |
+| Database         | PostgreSQL (prod), SQLite (dev)                  |
+| Smart Contracts  | Solidity 0.8.28, Hardhat                         |
+| Blockchain       | Hardhat Network (local), Sepolia (prod)          |
+| External DEX     | Hyperliquid API                                  |
+| Containerization | Docker Compose                                   |
 
 ## Key Design Decisions
 
@@ -138,12 +141,12 @@ Open http://localhost:3000 to start trading.
 
 **Decision**: Off-chain order matching with on-chain deposit/withdrawal.
 
-| Pros | Cons |
-|------|------|
-| Instant execution | Centralization risk |
-| No gas fees for orders | Trust in backend required |
-| Complex order types possible | Potential downtime risk |
-| High-frequency trading support | |
+| Pros                           | Cons                      |
+| ------------------------------ | ------------------------- |
+| Instant execution              | Centralization risk       |
+| No gas fees for orders         | Trust in backend required |
+| Complex order types possible   | Potential downtime risk   |
+| High-frequency trading support | <br />                    |
 
 **Mitigation**: Transparent event logging, future plans for decentralized sequencers.
 
@@ -164,23 +167,23 @@ Open http://localhost:3000 to start trading.
 
 ### 4. Risk Engine Parameters
 
-| Parameter | Value | Rationale |
-|-----------|-------|-----------|
-| Max Leverage | 10x | Balances trader flexibility with protocol safety |
-| Maintenance Margin | 5% | Industry standard for perpetual contracts |
-| Liquidation Threshold | 2.5% | Buffer before position becomes underwater |
-| Funding Interval | 8 hours | Matches industry standard (3x daily) |
+| Parameter             | Value   | Rationale                                        |
+| --------------------- | ------- | ------------------------------------------------ |
+| Max Leverage          | 10x     | Balances trader flexibility with protocol safety |
+| Maintenance Margin    | 5%      | Industry standard for perpetual contracts        |
+| Liquidation Threshold | 2.5%    | Buffer before position becomes underwater        |
+| Funding Interval      | 8 hours | Matches industry standard (3x daily)             |
 
 ## Known Limitations
 
-| Limitation | Impact | Future Work |
-|------------|--------|-------------|
-| **Centralized Matching** | Backend controls order execution | Decentralized sequencer network |
-| **Oracle Dependency** | Price feed is a single point of failure | Chainlink oracle integration |
-| **Single Collateral** | Only USDC supported | Multi-collateral support (USDT, DAI) |
-| **Market Orders Only** | No limit orders or stop-loss | Order book implementation |
-| **Mock Hedging Default** | No real hedging in dev | Testnet integration guide |
-| **No Insurance Fund** | Protocol bears all losses | Insurance fund mechanism |
+| Limitation               | Impact                                  | Future Work                          |
+| ------------------------ | --------------------------------------- | ------------------------------------ |
+| **Centralized Matching** | Backend controls order execution        | Decentralized sequencer network      |
+| **Oracle Dependency**    | Price feed is a single point of failure | Chainlink oracle integration         |
+| **Single Collateral**    | Only USDC supported                     | Multi-collateral support (USDT, DAI) |
+| **Market Orders Only**   | No limit orders or stop-loss            | Order book implementation            |
+| **Mock Hedging Default** | No real hedging in dev                  | Testnet integration guide            |
+| **No Insurance Fund**    | Protocol bears all losses               | Insurance fund mechanism             |
 
 ## Documentation
 
