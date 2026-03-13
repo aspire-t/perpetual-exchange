@@ -773,4 +773,337 @@ describe('OrderService', () => {
       expect(result.data?.hedgeError).toBe('Hedge failed');
     });
   });
+
+  describe('executePendingLimitOrders', () => {
+    const mockUser = {
+      id: 'user-1',
+      address: '0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266',
+    } as User;
+
+    const mockCurrentPrice = BigInt('2000000000'); // $2000
+
+    beforeEach(() => {
+      jest.spyOn(priceService, 'getPrice').mockResolvedValue({
+        success: true,
+        data: { price: mockCurrentPrice.toString() },
+      });
+    });
+
+    it('should return empty arrays when no pending limit orders exist', async () => {
+      jest.spyOn(orderRepository, 'find').mockResolvedValue([]);
+
+      const result = await orderService.executePendingLimitOrders('ETH');
+
+      expect(result.success).toBe(true);
+      expect(result.data?.executed).toEqual([]);
+      expect(result.data?.failed).toEqual([]);
+    });
+
+    it('should trigger LONG limit order when current price <= limit price', async () => {
+      const limitPrice = BigInt('2000000000'); // $2000 - price at limit
+      const mockOrder = {
+        id: 'order-1',
+        userId: 'user-1',
+        type: OrderType.LIMIT,
+        side: OrderSide.LONG,
+        size: '1000000000000000000',
+        limitPrice: limitPrice.toString(),
+        leverage: '10',
+        status: OrderStatus.PENDING,
+        user: mockUser,
+      } as Order;
+
+      jest.spyOn(orderRepository, 'find').mockResolvedValue([mockOrder]);
+      jest.spyOn(orderRepository, 'save').mockResolvedValue({
+        ...mockOrder,
+        status: OrderStatus.FILLED,
+        fillPrice: mockCurrentPrice.toString(),
+      } as Order);
+      jest.spyOn(orderService, 'executeOrder').mockResolvedValue({
+        success: true,
+        data: { positionId: 'position-1' },
+      });
+
+      const result = await orderService.executePendingLimitOrders('ETH');
+
+      expect(result.success).toBe(true);
+      expect(result.data?.executed).toHaveLength(1);
+      expect(result.data?.executed[0].orderId).toBe('order-1');
+      expect(orderRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: OrderStatus.FILLED,
+          fillPrice: mockCurrentPrice.toString(),
+        }),
+      );
+    });
+
+    it('should trigger LONG limit order when current price < limit price', async () => {
+      const limitPrice = BigInt('2100000000'); // $2100 - current price is below limit
+      const mockOrder = {
+        id: 'order-2',
+        userId: 'user-1',
+        type: OrderType.LIMIT,
+        side: OrderSide.LONG,
+        size: '1000000000000000000',
+        limitPrice: limitPrice.toString(),
+        leverage: '10',
+        status: OrderStatus.PENDING,
+        user: mockUser,
+      } as Order;
+
+      jest.spyOn(orderRepository, 'find').mockResolvedValue([mockOrder]);
+      jest.spyOn(orderRepository, 'save').mockResolvedValue({
+        ...mockOrder,
+        status: OrderStatus.FILLED,
+      } as Order);
+      jest.spyOn(orderService, 'executeOrder').mockResolvedValue({
+        success: true,
+        data: { positionId: 'position-2' },
+      });
+
+      const result = await orderService.executePendingLimitOrders('ETH');
+
+      expect(result.success).toBe(true);
+      expect(result.data?.executed).toHaveLength(1);
+      expect(result.data?.executed[0].orderId).toBe('order-2');
+    });
+
+    it('should NOT trigger LONG limit order when current price > limit price', async () => {
+      const limitPrice = BigInt('1900000000'); // $1900 - current price is above limit
+      const mockOrder = {
+        id: 'order-3',
+        userId: 'user-1',
+        type: OrderType.LIMIT,
+        side: OrderSide.LONG,
+        size: '1000000000000000000',
+        limitPrice: limitPrice.toString(),
+        leverage: '10',
+        status: OrderStatus.PENDING,
+        user: mockUser,
+      } as Order;
+
+      jest.spyOn(orderRepository, 'find').mockResolvedValue([mockOrder]);
+
+      const result = await orderService.executePendingLimitOrders('ETH');
+
+      expect(result.success).toBe(true);
+      expect(result.data?.executed).toHaveLength(0);
+      expect(orderRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('should trigger SHORT limit order when current price >= limit price', async () => {
+      const limitPrice = BigInt('2000000000'); // $2000 - price at limit
+      const mockOrder = {
+        id: 'order-4',
+        userId: 'user-1',
+        type: OrderType.LIMIT,
+        side: OrderSide.SHORT,
+        size: '1000000000000000000',
+        limitPrice: limitPrice.toString(),
+        leverage: '10',
+        status: OrderStatus.PENDING,
+        user: mockUser,
+      } as Order;
+
+      jest.spyOn(orderRepository, 'find').mockResolvedValue([mockOrder]);
+      jest.spyOn(orderRepository, 'save').mockResolvedValue({
+        ...mockOrder,
+        status: OrderStatus.FILLED,
+      } as Order);
+      jest.spyOn(orderService, 'executeOrder').mockResolvedValue({
+        success: true,
+        data: { positionId: 'position-4' },
+      });
+
+      const result = await orderService.executePendingLimitOrders('ETH');
+
+      expect(result.success).toBe(true);
+      expect(result.data?.executed).toHaveLength(1);
+      expect(result.data?.executed[0].orderId).toBe('order-4');
+    });
+
+    it('should trigger SHORT limit order when current price > limit price', async () => {
+      const limitPrice = BigInt('1900000000'); // $1900 - current price is above limit
+      const mockOrder = {
+        id: 'order-5',
+        userId: 'user-1',
+        type: OrderType.LIMIT,
+        side: OrderSide.SHORT,
+        size: '1000000000000000000',
+        limitPrice: limitPrice.toString(),
+        leverage: '10',
+        status: OrderStatus.PENDING,
+        user: mockUser,
+      } as Order;
+
+      jest.spyOn(orderRepository, 'find').mockResolvedValue([mockOrder]);
+      jest.spyOn(orderRepository, 'save').mockResolvedValue({
+        ...mockOrder,
+        status: OrderStatus.FILLED,
+      } as Order);
+      jest.spyOn(orderService, 'executeOrder').mockResolvedValue({
+        success: true,
+        data: { positionId: 'position-5' },
+      });
+
+      const result = await orderService.executePendingLimitOrders('ETH');
+
+      expect(result.success).toBe(true);
+      expect(result.data?.executed).toHaveLength(1);
+      expect(result.data?.executed[0].orderId).toBe('order-5');
+    });
+
+    it('should NOT trigger SHORT limit order when current price < limit price', async () => {
+      const limitPrice = BigInt('2100000000'); // $2100 - current price is below limit
+      const mockOrder = {
+        id: 'order-6',
+        userId: 'user-1',
+        type: OrderType.LIMIT,
+        side: OrderSide.SHORT,
+        size: '1000000000000000000',
+        limitPrice: limitPrice.toString(),
+        leverage: '10',
+        status: OrderStatus.PENDING,
+        user: mockUser,
+      } as Order;
+
+      jest.spyOn(orderRepository, 'find').mockResolvedValue([mockOrder]);
+
+      const result = await orderService.executePendingLimitOrders('ETH');
+
+      expect(result.success).toBe(true);
+      expect(result.data?.executed).toHaveLength(0);
+      expect(orderRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('should mark order as failed when execution fails', async () => {
+      const limitPrice = BigInt('2000000000');
+      const mockOrder = {
+        id: 'order-7',
+        userId: 'user-1',
+        type: OrderType.LIMIT,
+        side: OrderSide.LONG,
+        size: '1000000000000000000',
+        limitPrice: limitPrice.toString(),
+        leverage: '10',
+        status: OrderStatus.PENDING,
+        user: mockUser,
+      } as Order;
+
+      jest.spyOn(orderRepository, 'find').mockResolvedValue([mockOrder]);
+      jest.spyOn(orderRepository, 'save').mockResolvedValue({
+        ...mockOrder,
+        status: OrderStatus.REJECTED,
+      } as Order);
+      jest.spyOn(orderService, 'executeOrder').mockResolvedValue({
+        success: false,
+        error: 'Insufficient balance',
+      });
+
+      const result = await orderService.executePendingLimitOrders('ETH');
+
+      expect(result.success).toBe(true);
+      expect(result.data?.failed).toHaveLength(1);
+      expect(result.data?.failed[0].orderId).toBe('order-7');
+      expect(result.data?.failed[0].reason).toBe('Insufficient balance');
+      expect(orderRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: OrderStatus.REJECTED,
+        }),
+      );
+    });
+
+    it('should handle orders with invalid limit price', async () => {
+      const mockOrder = {
+        id: 'order-8',
+        userId: 'user-1',
+        type: OrderType.LIMIT,
+        side: OrderSide.LONG,
+        size: '1000000000000000000',
+        limitPrice: '0',
+        leverage: '10',
+        status: OrderStatus.PENDING,
+        user: mockUser,
+      } as Order;
+
+      jest.spyOn(orderRepository, 'find').mockResolvedValue([mockOrder]);
+
+      const result = await orderService.executePendingLimitOrders('ETH');
+
+      expect(result.success).toBe(true);
+      expect(result.data?.failed).toHaveLength(1);
+      expect(result.data?.failed[0].orderId).toBe('order-8');
+      expect(result.data?.failed[0].reason).toBe('Invalid limit price');
+    });
+
+    it('should return error when price fetch fails', async () => {
+      jest.spyOn(priceService, 'getPrice').mockResolvedValue({
+        success: false,
+        error: 'Price unavailable',
+      });
+
+      const result = await orderService.executePendingLimitOrders('ETH');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Failed to get current price');
+    });
+
+    it('should handle multiple pending orders with mixed results', async () => {
+      const longOrder = {
+        id: 'order-long',
+        userId: 'user-1',
+        type: OrderType.LIMIT,
+        side: OrderSide.LONG,
+        size: '1000000000000000000',
+        limitPrice: '2100000000', // Should trigger
+        leverage: '10',
+        status: OrderStatus.PENDING,
+        user: mockUser,
+      } as Order;
+
+      const shortOrder = {
+        id: 'order-short',
+        userId: 'user-1',
+        type: OrderType.LIMIT,
+        side: OrderSide.SHORT,
+        size: '1000000000000000000',
+        limitPrice: '1900000000', // Should trigger (current $2000 >= limit $1900)
+        leverage: '10',
+        status: OrderStatus.PENDING,
+        user: mockUser,
+      } as Order;
+
+      const waitingOrder = {
+        id: 'order-waiting',
+        userId: 'user-1',
+        type: OrderType.LIMIT,
+        side: OrderSide.LONG,
+        size: '1000000000000000000',
+        limitPrice: '1900000000', // Should NOT trigger
+        leverage: '10',
+        status: OrderStatus.PENDING,
+        user: mockUser,
+      } as Order;
+
+      jest
+        .spyOn(orderRepository, 'find')
+        .mockResolvedValue([longOrder, shortOrder, waitingOrder]);
+      jest
+        .spyOn(orderRepository, 'save')
+        .mockImplementation(async (order) => order as Order);
+      jest
+        .spyOn(orderService, 'executeOrder')
+        .mockResolvedValueOnce({ success: true, data: { positionId: 'p1' } })
+        .mockResolvedValueOnce({ success: false, error: 'Balance too low' });
+
+      const result = await orderService.executePendingLimitOrders('ETH');
+
+      expect(result.success).toBe(true);
+      expect(result.data?.executed).toHaveLength(1);
+      expect(result.data?.executed[0].orderId).toBe('order-long');
+      expect(result.data?.failed).toHaveLength(1);
+      expect(result.data?.failed[0].orderId).toBe('order-short');
+      expect(result.data?.failed[0].reason).toBe('Balance too low');
+    });
+  });
 });
