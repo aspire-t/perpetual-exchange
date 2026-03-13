@@ -53,6 +53,9 @@ export class Order {
   })
   side: OrderSide;
 
+  @Column('varchar', { nullable: true })
+  symbol?: string;
+
   @Column('varchar')
   size: string;
 

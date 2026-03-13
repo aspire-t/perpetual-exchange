@@ -18,7 +18,9 @@ describe('HyperliquidClient', () => {
     get: jest.fn(),
   };
 
-  beforeEach(async () => {
+  const setupModule = async (configValues: (key: string) => string | undefined) => {
+    mockConfigService.get.mockImplementation(configValues);
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         HyperliquidClient,
@@ -36,7 +38,7 @@ describe('HyperliquidClient', () => {
     hyperliquidClient = module.get<HyperliquidClient>(HyperliquidClient);
     httpService = module.get<HttpService>(HttpService);
     configService = module.get<ConfigService>(ConfigService);
-  });
+  };
 
   afterEach(() => {
     jest.clearAllMocks();
@@ -44,8 +46,8 @@ describe('HyperliquidClient', () => {
 
   describe('placeOrder', () => {
     describe('when credentials are not configured (mock mode)', () => {
-      beforeEach(() => {
-        mockConfigService.get.mockImplementation((key: string) => {
+      beforeEach(async () => {
+        await setupModule((key: string) => {
           if (key === 'HYPERLIQUID_API_URL')
             return 'https://api.hyperliquid.xyz';
           if (key === 'HYPERLIQUID_API_KEY') return undefined;
@@ -103,35 +105,127 @@ describe('HyperliquidClient', () => {
     });
 
     describe('when credentials are configured', () => {
-      beforeEach(() => {
-        mockConfigService.get.mockImplementation((key: string) => {
+      beforeEach(async () => {
+        await setupModule((key: string) => {
           if (key === 'HYPERLIQUID_API_URL')
             return 'https://api.hyperliquid.xyz';
           if (key === 'HYPERLIQUID_API_KEY') return 'test-api-key';
           if (key === 'HYPERLIQUID_WALLET_ADDRESS')
             return '0x1234567890123456789012345678901234567890';
           if (key === 'HYPERLIQUID_PRIVATE_KEY')
-            return '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd';
+            return '0x0123456789012345678901234567890123456789012345678901234567890123';
           if (key === 'NODE_ENV') return 'production';
           return undefined;
         });
       });
 
-      it('should attempt to place real order (falls back to mock)', async () => {
-        const result = await hyperliquidClient.placeOrder('ETH', '1.0', false);
+      it('should place a real order with correct signature', async () => {
+        // Mock meta response
+        mockHttpService.post.mockImplementation((url, body) => {
+          if (url.includes('/info') && body.type === 'meta') {
+            return of({
+              data: {
+                universe: [{ name: 'ETH' }, { name: 'BTC' }],
+              },
+            });
+          }
+          if (url.includes('/exchange')) {
+            return of({
+              data: {
+                status: 'ok',
+                response: {
+                  data: {
+                    statuses: [{ resting: { oid: 12345 } }],
+                  },
+                },
+              },
+            });
+          }
+          return of({ data: {} });
+        });
 
-        expect(result.success).toBe(true);
-        expect(result.data?.status).toBe('filled');
-      });
-
-      it('should handle order placement errors gracefully', async () => {
         const result = await hyperliquidClient.placeOrder(
-          'INVALID',
-          '0',
+          'ETH',
+          '1.0',
           false,
+          '2000',
         );
 
         expect(result.success).toBe(true);
+        expect(result.data?.orderId).toBe('12345');
+
+        // Verify API calls
+        expect(mockHttpService.post).toHaveBeenCalledTimes(2); // Meta + Exchange
+
+        // Verify Exchange Payload
+        const exchangeCall = mockHttpService.post.mock.calls.find((call) =>
+          call[0].includes('/exchange'),
+        );
+        expect(exchangeCall).toBeDefined();
+        const payload = exchangeCall[1];
+
+        expect(payload.action.type).toBe('order');
+        expect(payload.action.orders[0].a).toBe(0); // ETH is index 0
+        expect(payload.action.orders[0].b).toBe(true); // Long
+        expect(payload.action.orders[0].p).toBe('2000');
+        expect(payload.action.orders[0].s).toBe('1.0');
+        expect(payload.signature).toBeDefined();
+        expect(payload.signature.r).toMatch(/^0x/);
+        expect(payload.signature.s).toMatch(/^0x/);
+        expect(typeof payload.signature.v).toBe('number');
+      });
+
+      it('should handle missing asset index', async () => {
+        mockHttpService.post.mockReturnValue(
+           of({
+             data: {
+               universe: [{ name: 'BTC' }], // ETH missing
+             },
+           }),
+        );
+
+        const result = await hyperliquidClient.placeOrder('ETH', '1.0', false, '2000');
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('Asset index not found');
+      });
+
+      it('should fetch price for market order if limit price missing', async () => {
+          mockHttpService.post.mockImplementation((url, body) => {
+            if (url.includes('/info')) {
+                if (body.type === 'meta') {
+                    return of({
+                        data: { universe: [{ name: 'ETH' }] },
+                    });
+                }
+                if (body.type === 'allMids') {
+                    return of({
+                        data: { ETH: '3000.5' },
+                    });
+                }
+            }
+            if (url.includes('/exchange')) {
+                return of({
+                    data: {
+                        status: 'ok',
+                        response: { data: { statuses: [{ resting: { oid: 67890 } }] } },
+                    },
+                });
+            }
+            return of({ data: {} });
+          });
+
+          const result = await hyperliquidClient.placeOrder('ETH', '0.1', true); // Short, no price
+
+          expect(result.success).toBe(true);
+          
+          const exchangeCall = mockHttpService.post.mock.calls.find((call) =>
+            call[0].includes('/exchange'),
+          );
+          const payload = exchangeCall[1];
+          // Short -> Slippage 0.95 -> 3000.5 * 0.95 = 2850.475
+          expect(parseFloat(payload.action.orders[0].p)).toBeCloseTo(2850.475);
+          expect(payload.action.orders[0].t.limit.tif).toBe('Ioc');
       });
     });
   });
@@ -164,8 +258,8 @@ describe('HyperliquidClient', () => {
       },
     ];
 
-    beforeEach(() => {
-      mockConfigService.get.mockImplementation((key: string) => {
+    beforeEach(async () => {
+      await setupModule((key: string) => {
         if (key === 'HYPERLIQUID_API_URL') return 'https://api.hyperliquid.xyz';
         if (key === 'HYPERLIQUID_WALLET_ADDRESS')
           return '0x1234567890123456789012345678901234567890';
@@ -236,8 +330,8 @@ describe('HyperliquidClient', () => {
       unrealizedPnl: '50000000',
     };
 
-    beforeEach(() => {
-      mockConfigService.get.mockImplementation((key: string) => {
+    beforeEach(async () => {
+      await setupModule((key: string) => {
         if (key === 'HYPERLIQUID_API_URL') return 'https://api.hyperliquid.xyz';
         if (key === 'HYPERLIQUID_WALLET_ADDRESS')
           return '0x1234567890123456789012345678901234567890';
@@ -294,8 +388,8 @@ describe('HyperliquidClient', () => {
       totalSzi: '2.5',
     };
 
-    beforeEach(() => {
-      mockConfigService.get.mockImplementation((key: string) => {
+    beforeEach(async () => {
+      await setupModule((key: string) => {
         if (key === 'HYPERLIQUID_API_URL') return 'https://api.hyperliquid.xyz';
         if (key === 'HYPERLIQUID_WALLET_ADDRESS')
           return '0x1234567890123456789012345678901234567890';
@@ -337,3 +431,4 @@ describe('HyperliquidClient', () => {
     });
   });
 });
+

@@ -41,7 +41,12 @@ export class DepositService {
     deposit.txHash = txHash;
     deposit.status = 'confirmed';
 
+    // Update user's balance
+    const currentBalance = BigInt(user.balance || '0');
+    user.balance = (currentBalance + BigInt(amount)).toString();
+
     await this.depositRepository.save(deposit);
+    await this.userRepository.save(user);
 
     return {
       success: true,

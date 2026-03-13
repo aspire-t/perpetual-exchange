@@ -32,6 +32,7 @@ describe('OrderService', () => {
     save: jest.fn(),
     findOne: jest.fn(),
     find: jest.fn(),
+    count: jest.fn(),
     createQueryBuilder: jest.fn(),
   });
 
@@ -150,24 +151,27 @@ describe('OrderService', () => {
         userId: mockUser.id,
         type: OrderType.MARKET,
         side: OrderSide.LONG,
-        size,
+        symbol: 'ETH',
+        size: size.toString(),
         status: OrderStatus.PENDING,
         createdAt: new Date(),
-      } as Order);
+      } as unknown as Order);
       jest.spyOn(orderRepository, 'save').mockResolvedValue({
         id: 'order-1',
         userId: mockUser.id,
         type: OrderType.MARKET,
         side: OrderSide.LONG,
-        size,
+        symbol: 'ETH',
+        size: size.toString(),
         status: OrderStatus.PENDING,
         createdAt: new Date(),
-      } as Order);
+      } as unknown as Order);
 
       const result = await orderService.createOrder(
         userAddress,
         OrderType.MARKET,
         OrderSide.LONG,
+        'ETH',
         size,
       );
 
@@ -190,26 +194,29 @@ describe('OrderService', () => {
         userId: mockUser.id,
         type: OrderType.LIMIT,
         side: OrderSide.SHORT,
-        size,
-        limitPrice,
+        symbol: 'ETH',
+        size: size.toString(),
+        limitPrice: limitPrice.toString(),
         status: OrderStatus.PENDING,
         createdAt: new Date(),
-      } as Order);
+      } as unknown as Order);
       jest.spyOn(orderRepository, 'save').mockResolvedValue({
         id: 'order-2',
         userId: mockUser.id,
         type: OrderType.LIMIT,
         side: OrderSide.SHORT,
-        size,
-        limitPrice,
+        symbol: 'ETH',
+        size: size.toString(),
+        limitPrice: limitPrice.toString(),
         status: OrderStatus.PENDING,
         createdAt: new Date(),
-      } as Order);
+      } as unknown as Order);
 
       const result = await orderService.createOrder(
         userAddress,
         OrderType.LIMIT,
         OrderSide.SHORT,
+        'ETH',
         size,
         limitPrice,
       );
@@ -236,24 +243,27 @@ describe('OrderService', () => {
         userId: 'user-new',
         type: OrderType.MARKET,
         side: OrderSide.LONG,
-        size: BigInt('1000000000000000000'),
+        symbol: 'ETH',
+        size: '1000000000000000000',
         status: OrderStatus.PENDING,
         createdAt: new Date(),
-      } as Order);
+      } as unknown as Order);
       jest.spyOn(orderRepository, 'save').mockResolvedValue({
         id: 'order-new',
         userId: 'user-new',
         type: OrderType.MARKET,
         side: OrderSide.LONG,
-        size: BigInt('1000000000000000000'),
+        symbol: 'ETH',
+        size: '1000000000000000000',
         status: OrderStatus.PENDING,
         createdAt: new Date(),
-      } as Order);
+      } as unknown as Order);
 
       const result = await orderService.createOrder(
         userAddress,
         OrderType.MARKET,
         OrderSide.LONG,
+        'ETH',
         BigInt('1000000000000000000'),
       );
 
@@ -268,6 +278,7 @@ describe('OrderService', () => {
         userAddress,
         OrderType.MARKET,
         OrderSide.LONG,
+        'ETH',
         BigInt('0'),
       );
 
@@ -336,6 +347,7 @@ describe('OrderService', () => {
       jest
         .spyOn(userRepository, 'findOne')
         .mockResolvedValue({ id: 'user-1' } as User);
+      jest.spyOn(orderRepository, 'count').mockResolvedValue(2);
       jest.spyOn(orderRepository, 'find').mockResolvedValue(mockOrders);
 
       const result = await orderService.getUserOrders(userAddress);
@@ -354,6 +366,7 @@ describe('OrderService', () => {
       jest
         .spyOn(userRepository, 'findOne')
         .mockResolvedValue({ id: 'user-1' } as User);
+      jest.spyOn(orderRepository, 'count').mockResolvedValue(0);
       jest.spyOn(orderRepository, 'find').mockResolvedValue([]);
 
       const result = await orderService.getUserOrders(userAddress);
@@ -450,13 +463,14 @@ describe('OrderService', () => {
     } as User;
     const size = BigInt('1000000000000000000'); // 1 token
     const leverage = BigInt('10'); // 10x leverage
-    const mockEntryPrice = BigInt('2000000000'); // $2000
+    const mockEntryPrice = BigInt('2000000000'); // $2000 in wei-like units
 
     beforeEach(() => {
       jest.spyOn(userRepository, 'findOne').mockResolvedValue(mockUser);
+      // Price in decimal: 2000000000 / 1e18 = 2e-9
       jest.spyOn(priceService, 'getPrice').mockResolvedValue({
         success: true,
-        data: { price: mockEntryPrice.toString() },
+        data: { price: '0.000000002' },
       });
       jest.spyOn(riskEngineService, 'checkNewPositionRisk').mockResolvedValue({
         allowed: true,
@@ -489,22 +503,25 @@ describe('OrderService', () => {
         userId: mockUser.id,
         type: OrderType.MARKET,
         side: OrderSide.LONG,
-        size,
+        size: size.toString(),
+        leverage: leverage.toString(),
         status: OrderStatus.FILLED,
         createdAt: new Date(),
-      } as Order);
+      } as unknown as Order);
       jest.spyOn(orderRepository, 'save').mockResolvedValue({
         id: 'order-1',
         userId: mockUser.id,
         type: OrderType.MARKET,
         side: OrderSide.LONG,
-        size,
+        size: size.toString(),
+        leverage: leverage.toString(),
         status: OrderStatus.FILLED,
         createdAt: new Date(),
-      } as Order);
+      } as unknown as Order);
 
       const result = await orderService.executeOrder(
         userAddress,
+        'ETH',
         OrderSide.LONG,
         size,
         leverage,
@@ -551,22 +568,25 @@ describe('OrderService', () => {
         userId: mockUser.id,
         type: OrderType.MARKET,
         side: OrderSide.SHORT,
-        size,
+        size: size.toString(),
+        leverage: leverage.toString(),
         status: OrderStatus.FILLED,
         createdAt: new Date(),
-      } as Order);
+      } as unknown as Order);
       jest.spyOn(orderRepository, 'save').mockResolvedValue({
         id: 'order-2',
         userId: mockUser.id,
         type: OrderType.MARKET,
         side: OrderSide.SHORT,
-        size,
+        size: size.toString(),
+        leverage: leverage.toString(),
         status: OrderStatus.FILLED,
         createdAt: new Date(),
-      } as Order);
+      } as unknown as Order);
 
       const result = await orderService.executeOrder(
         userAddress,
+        'ETH',
         OrderSide.SHORT,
         size,
         leverage,
@@ -592,6 +612,7 @@ describe('OrderService', () => {
 
       const result = await orderService.executeOrder(
         userAddress,
+        'ETH',
         OrderSide.LONG,
         size,
         leverage,
@@ -604,10 +625,20 @@ describe('OrderService', () => {
     });
 
     it('should return error when leverage is invalid', async () => {
+      // Reset the price mock for this test
+      jest.spyOn(priceService, 'getPrice').mockResolvedValue({
+        success: true,
+        data: { price: mockEntryPrice.toString() },
+      });
+      jest.spyOn(riskEngineService, 'checkNewPositionRisk').mockResolvedValue({
+        allowed: true,
+      });
+
       const result = await orderService.executeOrder(
         userAddress,
+        'ETH',
         OrderSide.LONG,
-        size,
+        BigInt('1000000000000000000'),
         BigInt('0'),
       );
 
@@ -618,6 +649,7 @@ describe('OrderService', () => {
     it('should return error when size is invalid', async () => {
       const result = await orderService.executeOrder(
         userAddress,
+        'ETH',
         OrderSide.LONG,
         BigInt('0'),
         leverage,
@@ -631,11 +663,11 @@ describe('OrderService', () => {
       const existingPosition = {
         id: 'position-existing',
         userId: mockUser.id,
-        size: BigInt('500000000000000000'),
-        entryPrice: BigInt('1900000000'),
+        size: '500000000000000000',
+        entryPrice: '1900000000',
         isLong: true,
         isOpen: true,
-      } as Position;
+      } as unknown as Position;
 
       jest
         .spyOn(balanceService, 'lockMargin')
@@ -647,9 +679,9 @@ describe('OrderService', () => {
         success: true,
         data: {
           id: 'position-existing',
-          size: BigInt('1500000000000000000').toString(),
-          entryPrice: BigInt('1966666666').toString(),
-          averageEntryPrice: BigInt('1966666666').toString(),
+          size: '1500000000000000000',
+          entryPrice: '1966666666',
+          averageEntryPrice: '1966666666',
         },
       });
       jest.spyOn(hedgingService, 'autoHedge').mockResolvedValue({
@@ -661,22 +693,25 @@ describe('OrderService', () => {
         userId: mockUser.id,
         type: OrderType.MARKET,
         side: OrderSide.LONG,
-        size,
+        size: size.toString(),
+        leverage: leverage.toString(),
         status: OrderStatus.FILLED,
         createdAt: new Date(),
-      } as Order);
+      } as unknown as Order);
       jest.spyOn(orderRepository, 'save').mockResolvedValue({
         id: 'order-3',
         userId: mockUser.id,
         type: OrderType.MARKET,
         side: OrderSide.LONG,
-        size,
+        size: size.toString(),
+        leverage: leverage.toString(),
         status: OrderStatus.FILLED,
         createdAt: new Date(),
-      } as Order);
+      } as unknown as Order);
 
       const result = await orderService.executeOrder(
         userAddress,
+        'ETH',
         OrderSide.LONG,
         size,
         leverage,
@@ -704,22 +739,25 @@ describe('OrderService', () => {
         userId: mockUser.id,
         type: OrderType.MARKET,
         side: OrderSide.LONG,
-        size,
+        size: size.toString(),
+        leverage: leverage.toString(),
         status: OrderStatus.FILLED,
         createdAt: new Date(),
-      } as Order);
+      } as unknown as Order);
       jest.spyOn(orderRepository, 'save').mockResolvedValue({
         id: 'order-4',
         userId: mockUser.id,
         type: OrderType.MARKET,
         side: OrderSide.LONG,
-        size,
+        size: size.toString(),
+        leverage: leverage.toString(),
         status: OrderStatus.FILLED,
         createdAt: new Date(),
-      } as Order);
+      } as unknown as Order);
 
       const result = await orderService.executeOrder(
         userAddress,
+        'ETH',
         OrderSide.LONG,
         size,
         leverage,
@@ -747,22 +785,25 @@ describe('OrderService', () => {
         userId: mockUser.id,
         type: OrderType.MARKET,
         side: OrderSide.LONG,
-        size,
+        size: size.toString(),
+        leverage: leverage.toString(),
         status: OrderStatus.FILLED,
         createdAt: new Date(),
-      } as Order);
+      } as unknown as Order);
       jest.spyOn(orderRepository, 'save').mockResolvedValue({
         id: 'order-5',
         userId: mockUser.id,
         type: OrderType.MARKET,
         side: OrderSide.LONG,
-        size,
+        size: size.toString(),
+        leverage: leverage.toString(),
         status: OrderStatus.FILLED,
         createdAt: new Date(),
-      } as Order);
+      } as unknown as Order);
 
       const result = await orderService.executeOrder(
         userAddress,
+        'ETH',
         OrderSide.LONG,
         size,
         leverage,

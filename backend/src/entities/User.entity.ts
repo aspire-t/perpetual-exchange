@@ -33,6 +33,9 @@ export class User {
   balance: string;
 
   @Column('varchar', { default: '0' })
+  locked: string;
+
+  @Column('varchar', { default: '0' })
   unrealizedPnl: string;
 
   @Column({ nullable: true })

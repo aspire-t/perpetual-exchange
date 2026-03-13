@@ -3,6 +3,7 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { Wallet, ethers } from 'ethers';
+import * as msgpack from 'msgpack-lite';
 
 export interface HyperliquidOrder {
   coin: string;
@@ -45,6 +46,7 @@ export class HyperliquidClient {
   private readonly walletAddress?: string;
   private readonly privateKey?: string;
   private readonly isTestnet: boolean;
+  private coinToAssetId: Map<string, number> = new Map();
 
   constructor(
     private readonly httpService: HttpService,
@@ -110,7 +112,6 @@ export class HyperliquidClient {
 
   /**
    * Place a real order on Hyperliquid
-   * This is a simplified implementation - production would need full order signing
    */
   private async placeRealOrder(
     coin: string,
@@ -123,41 +124,200 @@ export class HyperliquidClient {
     error?: string;
   }> {
     try {
-      // Hyperliquid order payload
-      const orderPayload = {
-        coin: coin.toUpperCase(),
-        isCross: true,
-        limitPx: limitPrice || 'market',
-        side: isShort ? 'A' : 'B', // A = Ask (Short), B = Bid (Long)
-        size: size,
-        reduceOnly: false,
-        orderType: limitPrice ? 'limit' : 'market',
+      const assetIndex = await this.getAssetIndex(coin);
+      if (assetIndex === undefined) {
+        throw new Error(`Asset index not found for coin: ${coin}`);
+      }
+
+      const wallet = new Wallet(this.privateKey!);
+      const nonce = Date.now();
+
+      // Order action payload
+      const action = {
+        type: 'order',
+        orders: [
+          {
+            a: assetIndex,
+            b: !isShort, // true for buy (long), false for sell (short)
+            p: limitPrice || '1000000', // Need a valid price. If market, usually aggressive limit.
+            s: size,
+            r: false, // reduce only
+            t: { limit: { tif: 'Gtc' } }, // Time in force: Gtc, Ioc, Alo
+          },
+        ],
+        grouping: 'na',
       };
 
-      // For real implementation, we need to:
-      // 1. Create order payload
-      // 2. Sign the order with wallet
-      // 3. Send to Hyperliquid API
+      // For market orders, we should probably set a very aggressive price or use Ioc?
+      // But standard Hyperliquid usage is often Limit Gtc with aggressive price for market.
+      // If limitPrice is not provided, we should probably fetch current price and add slippage?
+      // Or just rely on the user providing a price or handling 'market' logic upstream.
+      // For now, if no limitPrice, we use a placeholder or handle it.
+      // NOTE: 'market' string in limitPx logic in mock was a simplification.
+      // Real API requires a numeric string price.
+      if (!limitPrice) {
+          // If no limit price, we should probably fetch the mark price first?
+          // Or just assume the caller handles it.
+          // Let's throw for now if no price, as 'market' orders need a limit price in Hyperliquid (limit crossing spread).
+          // Or we can try to get the price.
+          // For safety, let's warn and require price or implement price fetching.
+          // But to keep it simple as requested:
+          // The user's mock code used 'market'.
+          // Let's fetch the price if not provided.
+          const priceRes = await this.priceServiceGetPrice(coin);
+          if (priceRes) {
+             const basePrice = parseFloat(priceRes);
+             const slippage = isShort ? 0.95 : 1.05; // 5% slippage
+             action.orders[0].p = (basePrice * slippage).toFixed(6); // 6 decimals usually safe?
+             action.orders[0].t = { limit: { tif: 'Ioc' } }; // Immediate or cancel for market
+          } else {
+             throw new Error('Limit price required for real orders or price fetch failed');
+          }
+      }
 
-      // This is a simplified version - full implementation would need:
-      // - Order struct encoding
-      // - EIP-712 signature
-      // - Nonce management
-      // - API authentication
+      const signature = await this.signL1Action(wallet, action, nonce);
 
-      this.logger.log(
-        `Placing real order on Hyperliquid: ${JSON.stringify(orderPayload)}`,
+      const payload = {
+        action,
+        nonce,
+        signature,
+        vaultAddress: null,
+      };
+
+      this.logger.log(`Sending order to Hyperliquid: ${JSON.stringify(payload)}`);
+
+      const response = await firstValueFrom(
+        this.httpService.post(`${this.baseUrl}/exchange`, payload)
       );
 
-      // TODO: Implement full order signing and submission
-      // For now, return mock response with warning
-      return this.mockPlaceOrder(coin, size, isShort, limitPrice);
+      const result = response.data;
+      if (result.status === 'ok') {
+        const status = result.response?.data?.statuses?.[0];
+        if (status?.error) {
+             return {
+                 success: false,
+                 error: `Order error: ${status.error}`,
+             };
+        }
+        return {
+          success: true,
+          data: {
+            orderId: result.response?.data?.statuses?.[0]?.resting?.oid?.toString() || 'filled',
+            status: 'filled', // or 'open'
+            price: action.orders[0].p,
+          },
+        };
+      } else {
+        return {
+          success: false,
+          error: result.response || 'Unknown error',
+        };
+      }
     } catch (error) {
       this.logger.error(`Real order placement failed: ${error.message}`);
       return {
         success: false,
         error: `Failed to place real order: ${error.message}`,
       };
+    }
+  }
+
+  // Helper to fetch price if needed (simplified)
+  private async priceServiceGetPrice(coin: string): Promise<string | null> {
+      // In a real app, inject PriceService. Here we might just fetch from Hyperliquid info.
+      // Or reuse the existing getPosition logic which calls /info.
+      // Let's call /info meta or allMids.
+      try {
+           const response = await firstValueFrom(
+              this.httpService.post(`${this.baseUrl}/info`, { type: 'allMids' })
+           );
+           const mids = response.data;
+           return mids[coin] || null;
+      } catch (e) {
+          return null;
+      }
+  }
+
+  /**
+   * Sign an L1 action for Hyperliquid
+   */
+  private async signL1Action(
+    wallet: Wallet,
+    action: any,
+    nonce: number,
+  ): Promise<{ r: string; s: string; v: number }> {
+    const actionBytes = msgpack.encode(action);
+    const nonceBytes = Buffer.alloc(8);
+    // Write nonce as uint64 big-endian. JS numbers are doubles (53 bits integer safety).
+    // nonce is timestamp (ms), fits in 53 bits.
+    // We need to write 64-bit integer.
+    // High 32 bits, Low 32 bits.
+    const high = Math.floor(nonce / 0x100000000);
+    const low = nonce % 0x100000000;
+    nonceBytes.writeUInt32BE(high, 0);
+    nonceBytes.writeUInt32BE(low, 4);
+
+    const vaultAddressBytes = Buffer.from([0]); // No vault address
+
+    const payload = Buffer.concat([actionBytes, nonceBytes, vaultAddressBytes]);
+    const connectionId = ethers.keccak256(payload);
+
+    // EIP-712 Domain
+    const domain = {
+      name: 'HyperliquidSignTransaction',
+      version: '1',
+      chainId: 1337,
+      verifyingContract: '0x0000000000000000000000000000000000000000',
+    };
+
+    // Types
+    const types = {
+      Agent: [
+        { name: 'source', type: 'string' },
+        { name: 'connectionId', type: 'bytes32' },
+      ],
+    };
+
+    // Value
+    const value = {
+      source: this.isTestnet ? 'b' : 'a', // 'a' for mainnet, 'b' for testnet usually
+      connectionId: connectionId,
+    };
+
+    const signature = await wallet.signTypedData(domain, types, value);
+    const sig = ethers.Signature.from(signature);
+
+    return {
+      r: sig.r,
+      s: sig.s,
+      v: sig.v,
+    };
+  }
+
+  /**
+   * Get asset index for a coin symbol
+   */
+  private async getAssetIndex(coin: string): Promise<number | undefined> {
+    if (this.coinToAssetId.has(coin)) {
+      return this.coinToAssetId.get(coin);
+    }
+
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post(`${this.baseUrl}/info`, {
+          type: 'meta',
+        }),
+      );
+
+      const universe = response.data.universe;
+      universe.forEach((asset: any, index: number) => {
+        this.coinToAssetId.set(asset.name, index);
+      });
+
+      return this.coinToAssetId.get(coin);
+    } catch (error) {
+      this.logger.error(`Failed to fetch asset meta: ${error.message}`);
+      return undefined;
     }
   }
 

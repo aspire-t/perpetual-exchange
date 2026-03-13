@@ -37,6 +37,7 @@ export class OrderService {
     userAddress: string,
     type: OrderType,
     side: OrderSide,
+    symbol: string,
     size: bigint,
     limitPrice?: bigint,
   ): Promise<{ success: boolean; data?: any; error?: string }> {
@@ -64,6 +65,7 @@ export class OrderService {
     order.userId = user.id;
     order.type = type;
     order.side = side;
+    order.symbol = symbol;
     order.size = size.toString();
     order.limitPrice = limitPrice?.toString();
     order.status = OrderStatus.PENDING;
@@ -77,6 +79,7 @@ export class OrderService {
         userId: order.userId,
         type: order.type,
         side: order.side,
+        symbol: order.symbol,
         size: order.size.toString(),
         limitPrice: order.limitPrice?.toString(),
         status: order.status,
@@ -103,9 +106,11 @@ export class OrderService {
         userId: order.userId,
         type: order.type,
         side: order.side,
+        symbol: order.symbol,
         size: order.size.toString(),
         limitPrice: order.limitPrice?.toString(),
         fillPrice: order.fillPrice?.toString(),
+        leverage: order.leverage?.toString(),
         status: order.status,
         txHash: order.txHash,
         blockNumber: order.blockNumber,
@@ -124,7 +129,14 @@ export class OrderService {
     userAddress: string,
     page: number = 1,
     pageSize: number = 50,
-  ): Promise<{ success: boolean; data?: any[]; error?: string }> {
+  ): Promise<{
+    success: boolean;
+    data?: any[];
+    error?: string;
+    totalPages?: number;
+    currentPage?: number;
+    total?: number;
+  }> {
     // Normalize address to lowercase for consistent lookup
     const normalizedAddress = userAddress.toLowerCase();
 
@@ -134,8 +146,19 @@ export class OrderService {
 
     if (!user) {
       // Return empty array if user not found (no orders yet)
-      return { success: true, data: [] };
+      return {
+        success: true,
+        data: [],
+        totalPages: 0,
+        currentPage: page || 1,
+        total: 0,
+      };
     }
+
+    // Get total count for pagination
+    const total = await this.orderRepository.count({
+      where: { userId: user.id },
+    });
 
     const orders = await this.orderRepository.find({
       where: { userId: user.id },
@@ -144,6 +167,8 @@ export class OrderService {
       skip: (page - 1) * pageSize,
     });
 
+    const totalPages = Math.ceil(total / pageSize);
+
     return {
       success: true,
       data: orders.map((order) => ({
@@ -151,14 +176,19 @@ export class OrderService {
         userId: order.userId,
         type: order.type,
         side: order.side,
+        symbol: order.symbol,
         size: order.size.toString(),
         limitPrice: order.limitPrice?.toString(),
         fillPrice: order.fillPrice?.toString(),
+        leverage: order.leverage?.toString(),
         status: order.status,
         txHash: order.txHash,
         blockNumber: order.blockNumber,
         createdAt: order.createdAt,
       })),
+      totalPages,
+      currentPage: page,
+      total,
     };
   }
 
@@ -220,7 +250,9 @@ export class OrderService {
         };
       }
 
-      const currentPrice = BigInt(priceResult.data.price);
+      // Convert decimal price to wei (18 decimals) for internal use
+      const priceDecimal = parseFloat(priceResult.data.price);
+      const currentPrice = BigInt(Math.floor(priceDecimal * 1e18));
 
       // Get all pending limit orders
       const pendingOrders = await this.orderRepository.find({
@@ -266,6 +298,7 @@ export class OrderService {
         const userAddress = order.user.address;
         const executionResult = await this.executeOrder(
           userAddress,
+          symbol,
           order.side,
           orderSize,
           leverage,
@@ -309,12 +342,14 @@ export class OrderService {
   /**
    * Execute an order - lock margin, open/increase position, trigger hedge
    * @param userAddress - User's wallet address
+   * @param symbol - Trading pair symbol (e.g., 'ETH', 'BTC')
    * @param side - Long or short
    * @param size - Position size in wei (18 decimals)
    * @param leverage - Leverage multiplier (e.g., 10 for 10x)
    */
   async executeOrder(
     userAddress: string,
+    symbol: string,
     side: OrderSide,
     size: bigint,
     leverage: bigint,
@@ -345,12 +380,15 @@ export class OrderService {
     }
 
     // Get current price
-    const priceResult = await this.priceService.getPrice('ETH');
+    const priceResult = await this.priceService.getPrice(symbol);
     if (!priceResult.success || !priceResult.data) {
       return { success: false, error: 'Failed to get current price' };
     }
 
-    const currentPrice = BigInt(priceResult.data.price);
+    // Convert decimal price to wei (18 decimals) for internal use
+    // e.g., "2093.7" -> "2093700000000000000000"
+    const priceDecimal = parseFloat(priceResult.data.price);
+    const currentPrice = BigInt(Math.floor(priceDecimal * 1e18));
 
     // Risk check for new position
     const riskCheck = await this.riskEngineService.checkNewPositionRisk(

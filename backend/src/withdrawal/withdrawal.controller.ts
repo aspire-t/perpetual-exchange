@@ -24,6 +24,14 @@ export class WithdrawalController {
     );
   }
 
+  @Post('request')
+  async requestWithdrawal(@Body() withdrawalDto: WithdrawalDto) {
+    return await this.withdrawalService.withdraw(
+      withdrawalDto.address,
+      withdrawalDto.amount,
+    );
+  }
+
   // Alias for backend consistency - /withdrawal also works
   @Post('../withdrawal')
   async withdrawLegacy(@Body() withdrawalDto: WithdrawalDto) {

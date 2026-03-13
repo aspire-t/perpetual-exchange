@@ -99,17 +99,17 @@ describe('IndexerService', () => {
   });
 
   describe('processDepositEvent', () => {
-    it('should process a deposit event and create deposit record', async () => {
+    it('should process a deposit event, create deposit record and update balance', async () => {
       const userAddress = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
-      const amount = BigInt('1000000000000000000');
+      const amount = BigInt('1000000000000000000'); // 1.0
       const txHash = '0xabc123';
       const blockNumber = 100;
 
-      const user = { id: '1', address: userAddress } as User;
+      const user = { id: '1', address: userAddress, balance: '0' } as User;
       const deposit = {
         id: '1',
         user,
-        amount,
+        amount: amount.toString(),
         txHash,
         status: 'confirmed',
       } as Deposit;
@@ -118,12 +118,12 @@ describe('IndexerService', () => {
         eventName: 'Deposit',
         blockNumber,
         userId: user.id,
-        amount,
+        amount: amount.toString(),
       } as ProcessedEvent;
 
       mockQueryRunner.manager.findOne.mockImplementation((entity, options) => {
         if (typeof entity === 'function' && entity.name === 'User') {
-          return Promise.resolve({ ...user });
+          return Promise.resolve(user);
         }
         if (typeof entity === 'function' && entity.name === 'ProcessedEvent') {
           return Promise.resolve(null);
@@ -172,7 +172,8 @@ describe('IndexerService', () => {
         },
       });
       expect(mockQueryRunner.manager.create).toHaveBeenCalledTimes(2);
-      expect(mockQueryRunner.manager.save).toHaveBeenCalledTimes(2);
+      expect(mockQueryRunner.manager.save).toHaveBeenCalledTimes(3); // User + Deposit + ProcessedEvent
+      expect(user.balance).toBe(amount.toString());
     });
 
     it('should return error when user not found', async () => {
@@ -283,17 +284,17 @@ describe('IndexerService', () => {
   });
 
   describe('processWithdrawEvent', () => {
-    it('should process a withdraw event and create withdrawal record', async () => {
+    it('should process a withdraw event, create withdrawal record and update locked balance', async () => {
       const userAddress = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
-      const amount = BigInt('500000000000000000');
+      const amount = BigInt('500000000000000000'); // 0.5
       const txHash = '0xdef456';
       const blockNumber = 101;
 
-      const user = { id: '1', address: userAddress } as User;
+      const user = { id: '1', address: userAddress, locked: '1000000000000000000' } as User; // 1.0 locked
       const withdrawal = {
         id: '1',
         user,
-        amount,
+        amount: amount.toString(),
         status: 'confirmed',
         txHash,
       } as Withdrawal;
@@ -302,12 +303,12 @@ describe('IndexerService', () => {
         eventName: 'Withdraw',
         blockNumber,
         userId: user.id,
-        amount,
+        amount: amount.toString(),
       } as ProcessedEvent;
 
       mockQueryRunner.manager.findOne.mockImplementation((entity, options) => {
         if (typeof entity === 'function' && entity.name === 'User') {
-          return Promise.resolve({ ...user });
+          return Promise.resolve(user);
         }
         if (typeof entity === 'function' && entity.name === 'ProcessedEvent') {
           return Promise.resolve(null);
@@ -352,7 +353,8 @@ describe('IndexerService', () => {
         },
       });
       expect(mockQueryRunner.manager.create).toHaveBeenCalledTimes(2);
-      expect(mockQueryRunner.manager.save).toHaveBeenCalledTimes(2);
+      expect(mockQueryRunner.manager.save).toHaveBeenCalledTimes(3); // User + Withdrawal + ProcessedEvent
+      expect(user.locked).toBe('500000000000000000'); // 1.0 - 0.5 = 0.5
     });
 
     it('should return error when user not found', async () => {

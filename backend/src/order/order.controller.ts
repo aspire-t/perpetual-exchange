@@ -6,6 +6,7 @@ import {
   Param,
   HttpCode,
   HttpStatus,
+  Query,
 } from '@nestjs/common';
 import {
   IsEthereumAddress,
@@ -32,11 +33,19 @@ export class CreateOrderDto {
 
   @IsString()
   @IsNotEmpty()
+  symbol: string;
+
+  @IsString()
+  @IsNotEmpty()
   size: string;
 
   @IsString()
   @IsOptional()
   limitPrice?: string;
+
+  @IsString()
+  @IsOptional()
+  leverage?: string;
 }
 
 export class OrderResponseDto {
@@ -46,6 +55,7 @@ export class OrderResponseDto {
     address: string;
     type: OrderType;
     side: OrderSide;
+    symbol: string;
     size: string;
     status: OrderStatus;
   };
@@ -59,12 +69,12 @@ export class OrderController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async createOrder(@Body() body: CreateOrderDto) {
-    return this.orderService.createOrder(
+    return this.orderService.executeOrder(
       body.address,
-      body.type,
+      body.symbol,
       body.side,
       BigInt(body.size),
-      body.limitPrice ? BigInt(body.limitPrice) : undefined,
+      BigInt(body.leverage || '1'),
     );
   }
 
@@ -74,8 +84,12 @@ export class OrderController {
   }
 
   @Get('user/:address')
-  async getUserOrders(@Param('address') address: string) {
-    return this.orderService.getUserOrders(address);
+  async getUserOrders(
+    @Param('address') address: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    return this.orderService.getUserOrders(address, page || 1, limit || 50);
   }
 
   @Post(':id/cancel')

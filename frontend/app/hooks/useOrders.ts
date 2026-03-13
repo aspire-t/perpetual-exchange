@@ -9,6 +9,7 @@ interface Order {
   size: string;
   limitPrice?: string;
   fillPrice?: string;
+  leverage?: string;
   status: 'pending' | 'open' | 'filled' | 'cancelled' | 'rejected';
   txHash?: string;
   createdAt: string;

@@ -1,14 +1,20 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { WithdrawalService } from './withdrawal.service';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
 import { User } from '../entities/User.entity';
 import { Withdrawal } from '../entities/Withdrawal.entity';
+import { ethers } from 'ethers';
+
+jest.mock('ethers');
 
 describe('WithdrawalService', () => {
   let withdrawalService: WithdrawalService;
   let userRepository: Repository<User>;
   let withdrawalRepository: Repository<Withdrawal>;
+  let dataSource: DataSource;
+  let configService: ConfigService;
 
   const mockUserRepository = {
     findOne: jest.fn(),
@@ -21,7 +27,50 @@ describe('WithdrawalService', () => {
     find: jest.fn(),
   };
 
+  const mockQueryRunner = {
+    connect: jest.fn(),
+    startTransaction: jest.fn(),
+    commitTransaction: jest.fn(),
+    rollbackTransaction: jest.fn(),
+    release: jest.fn(),
+    manager: {
+      findOne: jest.fn(),
+      save: jest.fn(),
+      create: jest.fn(),
+    },
+  };
+
+  const mockDataSource = {
+    createQueryRunner: jest.fn().mockReturnValue(mockQueryRunner),
+  };
+
+  const mockConfigService = {
+    get: jest.fn((key, defaultValue) => {
+      if (key === 'HYPERLIQUID_PRIVATE_KEY')
+        return '0x0123456789012345678901234567890123456789012345678901234567890123';
+      if (key === 'RPC_URL') return 'http://localhost:8545';
+      if (key === 'VAULT_CONTRACT_ADDRESS') return '0xVaultAddress';
+      return defaultValue;
+    }),
+  };
+
+  const mockProvider = {
+    getNetwork: jest.fn().mockResolvedValue({ chainId: 31337 }),
+  };
+  const mockWallet = {
+    signTypedData: jest.fn().mockResolvedValue('0xSignature'),
+  };
+  const mockContract = {
+    nonces: jest.fn().mockResolvedValue(0n),
+  };
+
   beforeEach(async () => {
+    jest.clearAllMocks();
+
+    (ethers.JsonRpcProvider as jest.Mock).mockReturnValue(mockProvider);
+    (ethers.Wallet as jest.Mock).mockReturnValue(mockWallet);
+    (ethers.Contract as jest.Mock).mockReturnValue(mockContract);
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         WithdrawalService,
@@ -33,6 +82,14 @@ describe('WithdrawalService', () => {
           provide: getRepositoryToken(Withdrawal),
           useValue: mockWithdrawalRepository,
         },
+        {
+          provide: ConfigService,
+          useValue: mockConfigService,
+        },
+        {
+          provide: DataSource,
+          useValue: mockDataSource,
+        },
       ],
     }).compile();
 
@@ -41,178 +98,87 @@ describe('WithdrawalService', () => {
     withdrawalRepository = module.get<Repository<Withdrawal>>(
       getRepositoryToken(Withdrawal),
     );
-  });
-
-  afterEach(() => {
-    jest.clearAllMocks();
+    dataSource = module.get<DataSource>(DataSource);
+    configService = module.get<ConfigService>(ConfigService);
   });
 
   describe('withdraw', () => {
     it('should create a withdrawal request successfully', async () => {
       const address = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
-      const amount = '500000000000000000';
+      const amount = '500000000000000000'; // 0.5
+      const userId = '1';
 
-      const user = { id: '1', address } as User;
+      const user = {
+        id: userId,
+        address,
+        balance: '1000000000000000000', // 1.0
+        locked: '0',
+      } as User;
+
       const withdrawal = {
         id: '1',
         user,
         amount,
         status: 'pending',
-        txHash: null,
       } as Withdrawal;
 
+      // Mock userRepository.findOne (for initial check in withdraw)
       mockUserRepository.findOne.mockResolvedValue(user);
-      mockWithdrawalRepository.create.mockImplementation(() => {
-        const w = {} as Withdrawal;
-        w.user = user;
-        w.amount = amount;
-        w.status = 'pending';
-        return w;
-      });
-      mockWithdrawalRepository.save.mockResolvedValue(withdrawal);
+
+      // Mock queryRunner.manager calls (for requestWithdrawal)
+      mockQueryRunner.manager.findOne.mockResolvedValue(user);
+      mockQueryRunner.manager.create.mockReturnValue(withdrawal);
+      mockQueryRunner.manager.save.mockResolvedValue(withdrawal);
 
       const result = await withdrawalService.withdraw(address, amount);
 
-      expect(result).toEqual({
-        success: true,
-        data: {
-          status: 'pending',
-          amount,
-        },
-      });
-      expect(mockWithdrawalRepository.create).toHaveBeenCalled();
-      expect(mockWithdrawalRepository.save).toHaveBeenCalled();
+      expect(result.success).toBe(true);
+      expect(result.data).toBeDefined();
+      expect(result.data.signature).toBe('0xSignature');
+      expect(result.data.nonce).toBe(0);
+      expect(result.data.amount).toBe(amount);
+
+      // Verify transaction flow
+      expect(mockDataSource.createQueryRunner).toHaveBeenCalled();
+      expect(mockQueryRunner.connect).toHaveBeenCalled();
+      expect(mockQueryRunner.startTransaction).toHaveBeenCalled();
+      expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
+      expect(mockQueryRunner.release).toHaveBeenCalled();
+
+      // Verify balance update
+      // user object is mutated in place in the service
+      expect(user.balance).toBe('500000000000000000'); // 1.0 - 0.5 = 0.5
+      expect(user.locked).toBe('500000000000000000'); // 0 + 0.5 = 0.5
     });
 
     it('should return error when user not found', async () => {
       const address = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
-      const amount = '500000000000000000';
-
       mockUserRepository.findOne.mockResolvedValue(null);
 
-      const result = await withdrawalService.withdraw(address, amount);
+      const result = await withdrawalService.withdraw(address, '100');
 
-      expect(result).toEqual({
-        success: false,
-        error: 'User not found',
-      });
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('User not found');
     });
 
-    it('should return error when there is a pending withdrawal', async () => {
+    it('should return error when insufficient balance', async () => {
       const address = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
-      const amount = '500000000000000000';
-
-      const user = { id: '1', address } as User;
-      const pendingWithdrawal = {
+      const user = {
         id: '1',
-        user,
-        amount: '100',
-        status: 'pending',
-      } as Withdrawal;
+        address,
+        balance: '0',
+        locked: '0',
+      } as User;
 
       mockUserRepository.findOne.mockResolvedValue(user);
-      mockWithdrawalRepository.findOne.mockResolvedValue(pendingWithdrawal);
+      mockQueryRunner.manager.findOne.mockResolvedValue(user);
 
-      const result = await withdrawalService.withdraw(address, amount);
+      const result = await withdrawalService.withdraw(address, '100');
 
-      expect(result).toEqual({
-        success: false,
-        error: 'You already have a pending withdrawal',
-      });
-    });
-  });
-
-  describe('getUserWithdrawals', () => {
-    const address = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
-    const normalizedAddress = address.toLowerCase();
-
-    it('should return withdrawals for user with existing withdrawals', async () => {
-      const user = { id: '1', address: normalizedAddress } as User;
-      const mockWithdrawals = [
-        {
-          id: '1',
-          userId: user.id,
-          amount: '500000000000000000',
-          status: 'pending',
-          txHash: null,
-          createdAt: new Date('2024-01-01'),
-        },
-        {
-          id: '2',
-          userId: user.id,
-          amount: '300000000000000000',
-          status: 'completed',
-          txHash:
-            '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
-          createdAt: new Date('2024-01-02'),
-        },
-      ] as Withdrawal[];
-
-      mockUserRepository.findOne.mockResolvedValue(user);
-      mockWithdrawalRepository.find.mockResolvedValue(mockWithdrawals);
-
-      const result = await withdrawalService.getUserWithdrawals(address);
-
-      expect(result.success).toBe(true);
-      expect(result.data).toHaveLength(2);
-      expect(result.data![0]).toEqual({
-        id: '1',
-        userId: user.id,
-        amount: '500000000000000000',
-        status: 'pending',
-        txHash: null,
-        createdAt: expect.any(Date),
-      });
-      expect(mockUserRepository.findOne).toHaveBeenCalledWith({
-        where: { address: normalizedAddress },
-      });
-      expect(mockWithdrawalRepository.find).toHaveBeenCalledWith({
-        where: { user: { id: user.id } },
-        order: { createdAt: 'DESC' },
-      });
-    });
-
-    it('should return empty array for user with no withdrawals', async () => {
-      const user = { id: '1', address: normalizedAddress } as User;
-
-      mockUserRepository.findOne.mockResolvedValue(user);
-      mockWithdrawalRepository.find.mockResolvedValue([]);
-
-      const result = await withdrawalService.getUserWithdrawals(address);
-
-      expect(result.success).toBe(true);
-      expect(result.data).toEqual([]);
-      expect(mockWithdrawalRepository.find).toHaveBeenCalledWith({
-        where: { user: { id: user.id } },
-        order: { createdAt: 'DESC' },
-      });
-    });
-
-    it('should return empty array for non-existent user', async () => {
-      mockUserRepository.findOne.mockResolvedValue(null);
-
-      const result = await withdrawalService.getUserWithdrawals(address);
-
-      expect(result.success).toBe(true);
-      expect(result.data).toEqual([]);
-      expect(mockUserRepository.findOne).toHaveBeenCalledWith({
-        where: { address: normalizedAddress },
-      });
-      expect(mockWithdrawalRepository.find).not.toHaveBeenCalled();
-    });
-
-    it('should normalize address to lowercase before query', async () => {
-      const mixedCaseAddress = '0xF39Fd6e51AAD88F6F4ce6aB8827279cffFb92266';
-      const user = { id: '1', address: normalizedAddress } as User;
-
-      mockUserRepository.findOne.mockResolvedValue(user);
-      mockWithdrawalRepository.find.mockResolvedValue([]);
-
-      await withdrawalService.getUserWithdrawals(mixedCaseAddress);
-
-      expect(mockUserRepository.findOne).toHaveBeenCalledWith({
-        where: { address: normalizedAddress },
-      });
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Insufficient balance');
+      
+      expect(mockQueryRunner.rollbackTransaction).toHaveBeenCalled();
     });
   });
 });

@@ -26,6 +26,7 @@ import { HedgingModule } from './hedging/hedging.module';
 import { FundingRateModule } from './funding/funding-rate.module';
 import { RiskEngineModule } from './risk/risk-engine.module';
 import { KlineModule } from './kline/kline.module';
+import { TasksModule } from './tasks/tasks.module';
 
 @Module({
   imports: [
@@ -71,6 +72,7 @@ import { KlineModule } from './kline/kline.module';
     FundingRateModule,
     RiskEngineModule,
     KlineModule,
+    TasksModule,
   ],
   controllers: [AppController],
   providers: [AppService],

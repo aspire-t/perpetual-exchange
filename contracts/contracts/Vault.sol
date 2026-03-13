@@ -4,17 +4,23 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 /**
  * @title Vault
  * @dev Minimal vault contract for perpetual exchange
  * Handles USDC deposits, withdrawals, and position management
  */
-contract Vault is Ownable {
+contract Vault is Ownable, EIP712 {
     using SafeERC20 for IERC20;
 
     // USDC token address
     IERC20 public usdc;
+
+    // EIP712 TypeHash
+    bytes32 private constant WITHDRAW_TYPEHASH = keccak256("Withdraw(address sender,uint256 amount,uint256 nonce,uint256 expiry)");
+
     // Events
     event Deposit(address indexed user, uint256 amount);
     event Withdraw(address indexed user, uint256 amount);
@@ -53,11 +59,14 @@ contract Vault is Ownable {
     // User positions mapping
     mapping(address => Position) public positions;
 
+    // User nonces mapping for signatures
+    mapping(address => uint256) public nonces;
+
     /**
      * @dev Constructor sets the deployer as owner and USDC address
      * @param usdcAddress Address of the USDC token contract
      */
-    constructor(address usdcAddress) Ownable(msg.sender) {
+    constructor(address usdcAddress) Ownable(msg.sender) EIP712("Vault", "1") {
         usdc = IERC20(usdcAddress);
     }
 
@@ -77,6 +86,47 @@ contract Vault is Ownable {
      * @param amount Amount to withdraw (in smallest units, i.e., 6 decimals)
      */
     function withdraw(uint256 amount) external {
+        require(amount > 0, "Amount must be > 0");
+        require(deposits[msg.sender] >= amount, "Insufficient deposit");
+        require(usdc.balanceOf(address(this)) >= amount, "Vault balance insufficient");
+
+        deposits[msg.sender] -= amount;
+        usdc.safeTransfer(msg.sender, amount);
+
+        emit Withdraw(msg.sender, amount);
+    }
+
+    /**
+     * @dev Withdraw with EIP-712 signature from owner
+     * @param amount Amount to withdraw
+     * @param nonce Current nonce for user
+     * @param expiry Expiry timestamp
+     * @param signature Signature from owner
+     */
+    function withdrawWithSignature(
+        uint256 amount,
+        uint256 nonce,
+        uint256 expiry,
+        bytes calldata signature
+    ) external {
+        require(block.timestamp <= expiry, "Signature expired");
+        require(nonce == nonces[msg.sender], "Invalid nonce");
+
+        bytes32 structHash = keccak256(abi.encode(
+            WITHDRAW_TYPEHASH,
+            msg.sender,
+            amount,
+            nonce,
+            expiry
+        ));
+
+        bytes32 hash = _hashTypedDataV4(structHash);
+        
+        address signer = ECDSA.recover(hash, signature);
+        require(signer == owner(), "Invalid signature");
+
+        nonces[msg.sender]++;
+
         require(amount > 0, "Amount must be > 0");
         require(deposits[msg.sender] >= amount, "Insufficient deposit");
         require(usdc.balanceOf(address(this)) >= amount, "Vault balance insufficient");

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Repository, DataSource } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { User } from '../entities/User.entity';
@@ -8,6 +8,8 @@ import { ProcessedEvent } from '../entities/ProcessedEvent.entity';
 
 @Injectable()
 export class IndexerService {
+  private readonly logger = new Logger(IndexerService.name);
+
   constructor(
     @InjectRepository(User)
     private userRepository: Repository<User>,
@@ -84,6 +86,11 @@ export class IndexerService {
       processedEvent.userId = user.id;
       processedEvent.amount = amount.toString();
 
+      // Update user balance
+      const currentBalance = BigInt(user.balance || '0');
+      user.balance = (currentBalance + amount).toString();
+      await queryRunner.manager.save(user);
+
       await queryRunner.manager.save(deposit);
       await queryRunner.manager.save(processedEvent);
 
@@ -158,6 +165,17 @@ export class IndexerService {
       processedEvent.blockNumber = blockNumber;
       processedEvent.userId = user.id;
       processedEvent.amount = amount.toString();
+
+      // Update user locked balance (deduct)
+      const lockedBalance = BigInt(user.locked || '0');
+      if (lockedBalance < amount) {
+        this.logger.error(
+          `User ${user.address} locked balance ${lockedBalance} is less than withdrawal amount ${amount}`,
+        );
+      }
+      // Deduct anyway as the event happened on chain
+      user.locked = (lockedBalance - amount).toString();
+      await queryRunner.manager.save(user);
 
       await queryRunner.manager.save(withdrawal);
       await queryRunner.manager.save(processedEvent);

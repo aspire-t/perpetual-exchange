@@ -8,6 +8,7 @@ describe('WithdrawalController', () => {
 
   const mockWithdrawalService = {
     withdraw: jest.fn(),
+    getUserWithdrawals: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -67,42 +68,28 @@ describe('WithdrawalController', () => {
 
       expect(result).toEqual(expectedResult);
     });
+  });
 
-    it('should return error when there is a pending withdrawal', async () => {
+  describe('requestWithdrawal', () => {
+    it('should return success response with signature', async () => {
       const withdrawalDto = {
         address: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
         amount: '500000000000000000',
-      };
-      const expectedResult = {
-        success: false,
-        error: 'You already have a pending withdrawal',
-      };
-
-      mockWithdrawalService.withdraw.mockResolvedValue(expectedResult);
-
-      const result = await withdrawalController.withdraw(withdrawalDto);
-
-      expect(result).toEqual(expectedResult);
-    });
-  });
-
-  describe('withdrawLegacy', () => {
-    it('should return success response on /withdrawal endpoint', async () => {
-      const withdrawalDto = {
-        address: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
-        amount: '1000000000000000000',
       };
       const expectedResult = {
         success: true,
         data: {
           status: 'pending',
           amount: withdrawalDto.amount,
+          signature: '0xSignature',
+          nonce: 1,
+          expiry: 1234567890,
         },
       };
 
       mockWithdrawalService.withdraw.mockResolvedValue(expectedResult);
 
-      const result = await withdrawalController.withdrawLegacy(withdrawalDto);
+      const result = await withdrawalController.requestWithdrawal(withdrawalDto);
 
       expect(withdrawalService.withdraw).toHaveBeenCalledWith(
         withdrawalDto.address,
@@ -110,21 +97,21 @@ describe('WithdrawalController', () => {
       );
       expect(result).toEqual(expectedResult);
     });
+  });
 
-    it('should return error when user not found on /withdrawal endpoint', async () => {
-      const withdrawalDto = {
-        address: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
-        amount: '1000000000000000000',
-      };
+  describe('getUserWithdrawals', () => {
+    it('should return user withdrawals', async () => {
+      const address = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
       const expectedResult = {
-        success: false,
-        error: 'User not found',
+        success: true,
+        data: [],
       };
 
-      mockWithdrawalService.withdraw.mockResolvedValue(expectedResult);
+      mockWithdrawalService.getUserWithdrawals.mockResolvedValue(expectedResult);
 
-      const result = await withdrawalController.withdrawLegacy(withdrawalDto);
+      const result = await withdrawalController.getUserWithdrawals(address);
 
+      expect(withdrawalService.getUserWithdrawals).toHaveBeenCalledWith(address);
       expect(result).toEqual(expectedResult);
     });
   });

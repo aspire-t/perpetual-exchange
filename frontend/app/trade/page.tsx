@@ -2,9 +2,10 @@
 
 import { useState } from 'react';
 import { useAccount } from 'wagmi';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Navigation } from '../components/Navigation';
 import { SymbolSelector } from '../components/SymbolSelector';
+import { KlineChart } from '../components/KlineChart';
 import toast from 'react-hot-toast';
 import { useDeposits } from '../hooks/useDeposits';
 import { useWithdrawals } from '../hooks/useWithdrawals';
@@ -16,6 +17,7 @@ interface OrderData {
   side: 'Long' | 'Short';
   size: string;
   symbol: string;
+  leverage: number;
 }
 
 type HistoryTabType = 'orders' | 'deposits' | 'withdrawals';
@@ -23,17 +25,16 @@ type HistoryTabType = 'orders' | 'deposits' | 'withdrawals';
 export default function TradePage() {
   const { isConnected, address } = useAccount();
   const [size, setSize] = useState('');
+  const [leverage, setLeverage] = useState(1);
   const [selectedSymbol, setSelectedSymbol] = useState('ETH');
   const [historyTab, setHistoryTab] = useState<HistoryTabType>('orders');
-
-  // Fetch orders for refetch after placing order
-  const { refetch: refetchOrders } = useOrders(address || '');
+  const queryClient = useQueryClient();
 
   // Fetch current price for selected symbol
   const { data: priceData, isLoading: priceLoading } = useQuery({
     queryKey: ['price', selectedSymbol],
     queryFn: async () => {
-      const response = await fetch(`http://localhost:3001/price?symbol=${selectedSymbol}`);
+      const response = await fetch(`http://localhost:3001/price/${selectedSymbol}`);
       if (!response.ok) throw new Error('Failed to fetch price');
       return response.json();
     },
@@ -45,15 +46,16 @@ export default function TradePage() {
     mutationFn: async (orderData: OrderData) => {
       if (!address) throw new Error('Wallet not connected');
 
-      const response = await fetch('http://localhost:3001/order', {
+      const response = await fetch('/api/order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           address,
           type: 'market',
           side: orderData.side === 'Long' ? 'long' : 'short',
-          size: (BigInt(Math.floor(Number(orderData.size) * 1e18))).toString(),
           symbol: orderData.symbol,
+          size: (BigInt(Math.floor(Number(orderData.size) * 1e18))).toString(),
+          leverage: orderData.leverage.toString(),
         }),
       });
 
@@ -67,7 +69,8 @@ export default function TradePage() {
     onSuccess: () => {
       toast.success('Order submitted successfully!');
       setSize('');
-      refetchOrders();
+      // Invalidate orders query to refetch latest data
+      queryClient.invalidateQueries({ queryKey: ['orders', address] });
     },
     onError: (error: Error) => {
       toast.error(`Order failed: ${error.message}`);
@@ -79,7 +82,7 @@ export default function TradePage() {
       toast.error('Please enter a valid size');
       return;
     }
-    submitOrder.mutateAsync({ side, size, symbol: selectedSymbol });
+    submitOrder.mutateAsync({ side, size, symbol: selectedSymbol, leverage });
   };
 
   if (!isConnected) {
@@ -102,7 +105,7 @@ export default function TradePage() {
       <Navigation />
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Trade Section */}
-        <TradeSection {...{ priceData, priceLoading, size, setSize, submitOrder, handleOrder, selectedSymbol, setSelectedSymbol }} />
+        <TradeSection {...{ priceData, priceLoading, size, setSize, leverage, setLeverage, submitOrder, handleOrder, selectedSymbol, setSelectedSymbol }} />
 
         {/* Divider */}
         <hr className="border-t border-[var(--border-default)] my-8" />
@@ -119,13 +122,15 @@ interface TradeSectionProps {
   priceLoading: boolean;
   size: string;
   setSize: (size: string) => void;
+  leverage: number;
+  setLeverage: (leverage: number) => void;
   submitOrder: any;
   handleOrder: (side: 'Long' | 'Short') => void;
   selectedSymbol: string;
   setSelectedSymbol: (symbol: string) => void;
 }
 
-function TradeSection({ priceData, priceLoading, size, setSize, submitOrder, handleOrder, selectedSymbol, setSelectedSymbol }: TradeSectionProps) {
+function TradeSection({ priceData, priceLoading, size, setSize, leverage, setLeverage, submitOrder, handleOrder, selectedSymbol, setSelectedSymbol }: TradeSectionProps) {
   return (
     <section>
       <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-6 text-center">
@@ -156,6 +161,27 @@ function TradeSection({ priceData, priceLoading, size, setSize, submitOrder, han
             )}
           </div>
 
+          {/* Leverage Selector */}
+          <div className="bg-[var(--background-secondary)] border border-[var(--border-default)] rounded-lg p-4">
+            <label htmlFor="leverage" className="block text-sm font-medium text-[var(--text-secondary)] mb-3">
+              Leverage: <span className="text-[var(--text-primary)] font-semibold">{leverage}x</span>
+            </label>
+            <input
+              id="leverage"
+              type="range"
+              min="1"
+              max="10"
+              value={leverage}
+              onChange={(e) => setLeverage(Number(e.target.value))}
+              className="w-full h-2 bg-[var(--background-tertiary)] rounded-lg appearance-none cursor-pointer accent-[var(--accent-blue)]"
+            />
+            <div className="flex justify-between text-xs text-[var(--text-muted)] mt-2">
+              <span>1x</span>
+              <span>5x</span>
+              <span>10x</span>
+            </div>
+          </div>
+
           {/* Order Form */}
           <div className="bg-[var(--background-secondary)] border border-[var(--border-default)] rounded-lg p-4">
             <div className="mb-4">
@@ -172,6 +198,9 @@ function TradeSection({ priceData, priceLoading, size, setSize, submitOrder, han
                 min="0"
                 step="0.01"
               />
+              <p className="text-xs text-[var(--text-muted)] mt-1">
+                Margin required: {size ? (Number(size) / leverage).toFixed(2) : '0.00'} USDC ({leverage}x leverage)
+              </p>
             </div>
 
             {/* Action Buttons */}
@@ -196,6 +225,9 @@ function TradeSection({ priceData, priceLoading, size, setSize, submitOrder, han
 
         {/* Market Info - Right Column */}
         <div className="lg:col-span-2 space-y-4">
+          {/* K-line Chart */}
+          <KlineChart symbol={selectedSymbol} timeframe="1h" />
+
           {/* Market Stats - Only show if data exists */}
           {priceData?.success && priceData?.data?.stats && (
             <div className="bg-[var(--background-secondary)] border border-[var(--border-default)] rounded-lg p-4">
@@ -524,6 +556,7 @@ function WithdrawalStatusBadge({ status }: { status: string }) {
 }
 
 function OrdersTab({ userAddress }: { userAddress: string }) {
+  const [filter, setFilter] = useState<'open' | 'history'>('open');
   const {
     data: orders,
     isLoading,
@@ -544,65 +577,108 @@ function OrdersTab({ userAddress }: { userAddress: string }) {
     return <div className="text-red-400">Error: {error.message}</div>;
   }
 
-  if (!orders || orders.length === 0) {
-    return <div className="text-[var(--text-secondary)]">No orders yet</div>;
-  }
+  // Client-side filtering
+  const filteredOrders = orders?.filter(order => {
+    if (filter === 'open') {
+      return ['pending', 'open'].includes(order.status.toLowerCase());
+    } else {
+      return ['filled', 'cancelled', 'rejected'].includes(order.status.toLowerCase());
+    }
+  }) || [];
 
   return (
     <>
-      <table className="w-full">
-        <thead>
-          <tr className="text-left text-sm text-[var(--text-secondary)]">
-            <th className="pb-3">Time</th>
-            <th className="pb-3">Side</th>
-            <th className="pb-3">Type</th>
-            <th className="pb-3">Size</th>
-            <th className="pb-3">Price</th>
-            <th className="pb-3">Status</th>
-            <th className="pb-3">Transaction</th>
-          </tr>
-        </thead>
-        <tbody>
-          {orders.map((order) => (
-            <tr key={order.id} className="border-t border-[var(--border-default)]">
-              <td className="py-3 text-[var(--text-primary)]">
-                {new Date(order.createdAt).toLocaleString()}
-              </td>
-              <td className="py-3">
-                <span className={order.side === 'long' ? 'text-green-400' : 'text-red-400'}>
-                  {order.side.toUpperCase()}
-                </span>
-              </td>
-              <td className="py-3 text-[var(--text-primary)]">
-                {order.type.toUpperCase()}
-              </td>
-              <td className="py-3 text-[var(--text-primary)]">
-                {(Number(order.size) / 1e18).toFixed(2)} USDC
-              </td>
-              <td className="py-3 text-[var(--text-primary)]">
-                {order.fillPrice || order.limitPrice || '-'}
-              </td>
-              <td className="py-3">
-                <OrderStatusBadge status={order.status} />
-              </td>
-              <td className="py-3">
-                {order.txHash ? (
-                  <a
-                    href={`https://sepolia.bscscan.com/tx/${order.txHash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[var(--accent-blue)] hover:underline"
-                  >
-                    {order.txHash.slice(0, 10)}...{order.txHash.slice(-8)}
-                  </a>
-                ) : (
-                  <span className="text-[var(--text-secondary)]">-</span>
-                )}
-              </td>
+      {/* Sub-tabs for Orders */}
+      <div className="flex gap-4 mb-4 text-sm">
+        <button
+          onClick={() => setFilter('open')}
+          className={`pb-1 transition-colors ${
+            filter === 'open'
+              ? 'text-[var(--text-primary)] border-b border-[var(--text-primary)] font-medium'
+              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+          }`}
+        >
+          Open Orders
+        </button>
+        <button
+          onClick={() => setFilter('history')}
+          className={`pb-1 transition-colors ${
+            filter === 'history'
+              ? 'text-[var(--text-primary)] border-b border-[var(--text-primary)] font-medium'
+              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+          }`}
+        >
+          Order History
+        </button>
+      </div>
+
+      {filteredOrders.length === 0 ? (
+        <div className="text-[var(--text-secondary)] py-4">
+          No {filter} orders
+        </div>
+      ) : (
+        <table className="w-full">
+          <thead>
+            <tr className="text-left text-sm text-[var(--text-secondary)]">
+              <th className="pb-3">Time</th>
+              <th className="pb-3">Side</th>
+              <th className="pb-3">Type</th>
+              <th className="pb-3">Size</th>
+              <th className="pb-3">Leverage</th>
+              <th className="pb-3">Price</th>
+              <th className="pb-3">Status</th>
+              <th className="pb-3">Transaction</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {filteredOrders.map((order) => (
+              <tr key={order.id} className="border-t border-[var(--border-default)]">
+                <td className="py-3 text-[var(--text-primary)]">
+                  {new Date(order.createdAt).toLocaleString()}
+                </td>
+                <td className="py-3">
+                  <span className={order.side === 'long' ? 'text-green-400' : 'text-red-400'}>
+                    {order.side.toUpperCase()}
+                  </span>
+                </td>
+                <td className="py-3 text-[var(--text-primary)]">
+                  {order.type.toUpperCase()}
+                </td>
+                <td className="py-3 text-[var(--text-primary)]">
+                  {(Number(order.size) / 1e18).toFixed(2)} USDC
+                </td>
+                <td className="py-3 text-[var(--text-primary)]">
+                  {order.leverage ? `${order.leverage}x` : '1x'}
+                </td>
+                <td className="py-3 text-[var(--text-primary)]">
+                  {order.fillPrice || order.limitPrice || '-'}
+                </td>
+                <td className="py-3">
+                  <OrderStatusBadge status={order.status} />
+                </td>
+                <td className="py-3">
+                  {order.txHash ? (
+                    <a
+                      href={`https://sepolia.bscscan.com/tx/${order.txHash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[var(--accent-blue)] hover:underline"
+                    >
+                      {order.txHash.slice(0, 10)}...{order.txHash.slice(-8)}
+                    </a>
+                  ) : (
+                    <span className="text-[var(--text-secondary)]">-</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      
+      {/* Only show pagination if we're not filtering heavily on client side, 
+          or ideally backend should handle filtering. 
+          For now, keeping pagination controls but noting they apply to the full fetched set. */}
       <PaginationControls
         currentPage={currentPage}
         totalPages={totalPages}
