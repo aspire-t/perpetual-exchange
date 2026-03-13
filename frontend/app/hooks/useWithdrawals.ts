@@ -43,9 +43,11 @@ export function useWithdrawals(userAddress: string, options: UseWithdrawalsOptio
     queryFn: async () => {
       if (!userAddress) return { data: [], totalPages: 0, currentPage: 0 };
       const response = await fetch(`/api/withdraw/user/${userAddress}?page=${currentPage}&limit=${limit}`);
-      if (!response.ok) throw new Error('Failed to fetch withdrawals');
       const result = await response.json();
-      if (!result.success) return { data: [], totalPages: 0, currentPage: 0 };
+
+      if (!response.ok || (result.success === false)) {
+        throw new Error(result.error || 'Failed to fetch withdrawals');
+      }
 
       return {
         data: result.data || [],

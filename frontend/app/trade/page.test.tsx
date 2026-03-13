@@ -2,7 +2,7 @@ import '@testing-library/jest-dom';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import TradePage from './page';
 import { useAccount } from 'wagmi';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 
 // Mock wagmi hooks
@@ -40,8 +40,31 @@ jest.mock('@tanstack/react-query', () => {
         isPending: false,
       };
     }),
+    useQueryClient: jest.fn(() => ({
+      setQueryData: jest.fn(),
+      getQueryData: jest.fn(),
+    })),
   };
 });
+
+function createQueryClient() {
+  return new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+      },
+    },
+  });
+}
+
+function renderWithProviders(component: React.ReactElement) {
+  const queryClient = createQueryClient();
+  return render(
+    <QueryClientProvider client={queryClient}>
+      {component}
+    </QueryClientProvider>
+  );
+}
 
 // Mock Navigation component
 jest.mock('../components/Navigation', () => ({
@@ -87,7 +110,7 @@ describe('TradePage', () => {
     });
 
     it('should show connect wallet message when wallet is not connected', () => {
-      render(<TradePage />);
+      renderWithProviders(<TradePage />);
       expect(screen.getByText(/connect your wallet to start trading/i)).toBeInTheDocument();
     });
   });
@@ -102,13 +125,13 @@ describe('TradePage', () => {
 
     it('should display current price from API', () => {
       mockQueryResult = { data: { price: '50000' }, isLoading: false, error: null };
-      render(<TradePage />);
+      renderWithProviders(<TradePage />);
       expect(screen.getByText(/eth price/i)).toBeInTheDocument();
     });
 
     it('should show loading state when fetching price', () => {
       mockQueryResult = { data: undefined, isLoading: true, error: null };
-      render(<TradePage />);
+      renderWithProviders(<TradePage />);
       // Look for the price section specifically
       const priceSection = screen.getByText('ETH Price').parentElement;
       expect(priceSection).toHaveTextContent('Loading...');
@@ -116,14 +139,14 @@ describe('TradePage', () => {
 
     it('should have size input field', () => {
       mockQueryResult = { data: { price: '50000' }, isLoading: false, error: null };
-      render(<TradePage />);
+      renderWithProviders(<TradePage />);
       const sizeInput = screen.getByLabelText(/size/i);
       expect(sizeInput).toBeInTheDocument();
     });
 
     it('should have long and short buttons', () => {
       mockQueryResult = { data: { price: '50000' }, isLoading: false, error: null };
-      render(<TradePage />);
+      renderWithProviders(<TradePage />);
       expect(screen.getByRole('button', { name: /long/i })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /short/i })).toBeInTheDocument();
     });
@@ -132,7 +155,7 @@ describe('TradePage', () => {
       mockMutateAsync.mockResolvedValue({ success: true });
       mockQueryResult = { data: { price: '50000' }, isLoading: false, error: null };
 
-      render(<TradePage />);
+      renderWithProviders(<TradePage />);
 
       const sizeInput = screen.getByLabelText(/size/i);
       fireEvent.change(sizeInput, { target: { value: '100' } });
@@ -145,6 +168,7 @@ describe('TradePage', () => {
           side: 'Long',
           size: '100',
           symbol: 'ETH',
+          leverage: 1,
         });
       });
     });
@@ -153,7 +177,7 @@ describe('TradePage', () => {
       mockMutateAsync.mockResolvedValue({ success: true });
       mockQueryResult = { data: { price: '50000' }, isLoading: false, error: null };
 
-      render(<TradePage />);
+      renderWithProviders(<TradePage />);
 
       const sizeInput = screen.getByLabelText(/size/i);
       fireEvent.change(sizeInput, { target: { value: '100' } });
@@ -166,6 +190,7 @@ describe('TradePage', () => {
           side: 'Short',
           size: '100',
           symbol: 'ETH',
+          leverage: 1,
         });
       });
     });
@@ -174,7 +199,7 @@ describe('TradePage', () => {
       mockMutateAsync = jest.fn();
       mockQueryResult = { data: { price: '50000' }, isLoading: false, error: null };
 
-      render(<TradePage />);
+      renderWithProviders(<TradePage />);
 
       const longButton = screen.getByRole('button', { name: /long/i });
       fireEvent.click(longButton);
@@ -186,7 +211,7 @@ describe('TradePage', () => {
       mockMutateAsync.mockResolvedValue({ success: true });
       mockQueryResult = { data: { price: '50000' }, isLoading: false, error: null };
 
-      render(<TradePage />);
+      renderWithProviders(<TradePage />);
 
       const sizeInput = screen.getByLabelText(/size/i);
       fireEvent.change(sizeInput, { target: { value: '100' } });
@@ -203,7 +228,7 @@ describe('TradePage', () => {
       mockMutateAsync.mockRejectedValue(new Error('Order failed'));
       mockQueryResult = { data: { price: '50000' }, isLoading: false, error: null };
 
-      render(<TradePage />);
+      renderWithProviders(<TradePage />);
 
       const sizeInput = screen.getByLabelText(/size/i);
       fireEvent.change(sizeInput, { target: { value: '100' } });
@@ -218,21 +243,21 @@ describe('TradePage', () => {
 
     it('should have a symbol selector', () => {
       mockQueryResult = { data: { price: '50000' }, isLoading: false, error: null };
-      render(<TradePage />);
+      renderWithProviders(<TradePage />);
 
       expect(screen.getByTestId('symbol-selector')).toBeInTheDocument();
     });
 
     it('should default to ETH symbol', () => {
       mockQueryResult = { data: { price: '50000' }, isLoading: false, error: null };
-      render(<TradePage />);
+      renderWithProviders(<TradePage />);
 
       expect(screen.getByTestId('symbol-selector')).toHaveValue('ETH');
     });
 
     it('should update price query when symbol changes', () => {
       mockQueryResult = { data: { price: '50000' }, isLoading: false, error: null };
-      render(<TradePage />);
+      renderWithProviders(<TradePage />);
 
       const selector = screen.getByTestId('symbol-selector');
       fireEvent.change(selector, { target: { value: 'BTC' } });
@@ -244,7 +269,7 @@ describe('TradePage', () => {
       mockMutateAsync.mockResolvedValue({ success: true });
       mockQueryResult = { data: { price: '50000' }, isLoading: false, error: null };
 
-      render(<TradePage />);
+      renderWithProviders(<TradePage />);
 
       // Change symbol to BTC
       const selector = screen.getByTestId('symbol-selector');
@@ -261,6 +286,117 @@ describe('TradePage', () => {
           side: 'Long',
           size: '100',
           symbol: 'BTC',
+          leverage: 1,
+        });
+      });
+    });
+
+    it('should have leverage slider with default value of 1x', () => {
+      mockQueryResult = { data: { price: '50000' }, isLoading: false, error: null };
+      render(<TradePage />);
+
+      const leverageSlider = screen.getByLabelText(/leverage/i);
+      expect(leverageSlider).toBeInTheDocument();
+      expect(leverageSlider).toHaveValue('1');
+    });
+
+    it('should display current leverage value', () => {
+      mockQueryResult = { data: { price: '50000' }, isLoading: false, error: null };
+      render(<TradePage />);
+
+      // The leverage display is in the label with font-semibold class
+      const leverageLabel = screen.getByLabelText(/leverage/i);
+      const leverageDisplay = leverageLabel.closest('div')?.querySelector('.font-semibold');
+      expect(leverageDisplay).toHaveTextContent('1x');
+    });
+
+    it('should allow changing leverage from 1x to 10x', () => {
+      mockQueryResult = { data: { price: '50000' }, isLoading: false, error: null };
+      render(<TradePage />);
+
+      const leverageSlider = screen.getByLabelText(/leverage/i);
+      fireEvent.change(leverageSlider, { target: { value: '10' } });
+
+      expect(leverageSlider).toHaveValue('10');
+
+      // The leverage display is in the label with font-semibold class
+      const leverageDisplay = leverageSlider.closest('div')?.querySelector('.font-semibold');
+      expect(leverageDisplay).toHaveTextContent('10x');
+    });
+
+    it('should show margin required calculation based on leverage', () => {
+      mockQueryResult = { data: { price: '50000' }, isLoading: false, error: null };
+      render(<TradePage />);
+
+      const sizeInput = screen.getByLabelText(/size/i);
+      fireEvent.change(sizeInput, { target: { value: '100' } });
+
+      // At 1x leverage, margin required = size / 1 = 100
+      expect(screen.getByText(/Margin required: 100\.00 USDC \(1x leverage\)/)).toBeInTheDocument();
+    });
+
+    it('should update margin required when leverage changes', () => {
+      mockQueryResult = { data: { price: '50000' }, isLoading: false, error: null };
+      render(<TradePage />);
+
+      const sizeInput = screen.getByLabelText(/size/i);
+      fireEvent.change(sizeInput, { target: { value: '100' } });
+
+      const leverageSlider = screen.getByLabelText(/leverage/i);
+      fireEvent.change(leverageSlider, { target: { value: '5' } });
+
+      // At 5x leverage, margin required = size / 5 = 20
+      expect(screen.getByText(/Margin required: 20\.00 USDC \(5x leverage\)/)).toBeInTheDocument();
+    });
+
+    it('should submit order with selected leverage', async () => {
+      mockMutateAsync.mockResolvedValue({ success: true });
+      mockQueryResult = { data: { price: '50000' }, isLoading: false, error: null };
+
+      render(<TradePage />);
+
+      // Set leverage to 5x
+      const leverageSlider = screen.getByLabelText(/leverage/i);
+      fireEvent.change(leverageSlider, { target: { value: '5' } });
+
+      const sizeInput = screen.getByLabelText(/size/i);
+      fireEvent.change(sizeInput, { target: { value: '100' } });
+
+      const longButton = screen.getByRole('button', { name: /long/i });
+      fireEvent.click(longButton);
+
+      await waitFor(() => {
+        expect(mockMutateAsync).toHaveBeenCalledWith({
+          side: 'Long',
+          size: '100',
+          symbol: 'ETH',
+          leverage: 5,
+        });
+      });
+    });
+
+    it('should submit order with maximum leverage of 10x', async () => {
+      mockMutateAsync.mockResolvedValue({ success: true });
+      mockQueryResult = { data: { price: '50000' }, isLoading: false, error: null };
+
+      render(<TradePage />);
+
+      // Set leverage to 10x (maximum)
+      const leverageSlider = screen.getByLabelText(/leverage/i);
+      fireEvent.change(leverageSlider, { target: { value: '10' } });
+
+      const sizeInput = screen.getByLabelText(/size/i);
+      fireEvent.change(sizeInput, { target: { value: '100' } });
+
+      const longButton = screen.getByRole('button', { name: /long/i });
+      fireEvent.click(longButton);
+
+      await waitFor(() => {
+        expect(mockMutateAsync).toHaveBeenCalledWith({
+          side: 'Long',
+          size: '100',
+          symbol: 'ETH',
+          leverage: 10,
         });
       });
     });

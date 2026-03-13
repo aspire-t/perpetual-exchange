@@ -821,12 +821,13 @@ describe('OrderService', () => {
       address: '0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266',
     } as User;
 
-    const mockCurrentPrice = BigInt('2000000000'); // $2000
+    const mockCurrentPrice = BigInt('2000000000'); // $2000 in wei-like units
 
     beforeEach(() => {
+      // Price in decimal: 2000000000 / 1e18 = 2e-9
       jest.spyOn(priceService, 'getPrice').mockResolvedValue({
         success: true,
-        data: { price: mockCurrentPrice.toString() },
+        data: { price: '0.000000002' },
       });
     });
 

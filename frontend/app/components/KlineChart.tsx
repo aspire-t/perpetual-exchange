@@ -25,8 +25,11 @@ export function KlineChart({ symbol, timeframe = '1h' }: KlineChartProps) {
       const response = await fetch(
         `http://localhost:3001/klines?symbol=${symbol}&timeframe=${timeframe}&count=50`,
       );
-      if (!response.ok) throw new Error('Failed to fetch kline data');
-      return response.json();
+      const data = await response.json();
+      if (!response.ok || (data.success === false)) {
+        throw new Error(data.error || 'Failed to fetch kline data');
+      }
+      return data;
     },
     refetchInterval: 10000,
     enabled: !!symbol,

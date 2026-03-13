@@ -43,9 +43,11 @@ export function useDeposits(userAddress: string, options: UseDepositsOptions = {
     queryFn: async () => {
       if (!userAddress) return { data: [], totalPages: 0, currentPage: 0 };
       const response = await fetch(`/api/deposit/user/${userAddress}?page=${currentPage}&limit=${limit}`);
-      if (!response.ok) throw new Error('Failed to fetch deposits');
       const result = await response.json();
-      if (!result.success) return { data: [], totalPages: 0, currentPage: 0 };
+
+      if (!response.ok || (result.success === false)) {
+        throw new Error(result.error || 'Failed to fetch deposits');
+      }
 
       // Backend returns { data: Deposit[], totalPages: number, currentPage: number }
       return {

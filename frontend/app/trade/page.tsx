@@ -35,8 +35,11 @@ export default function TradePage() {
     queryKey: ['price', selectedSymbol],
     queryFn: async () => {
       const response = await fetch(`http://localhost:3001/price/${selectedSymbol}`);
-      if (!response.ok) throw new Error('Failed to fetch price');
-      return response.json();
+      const data = await response.json();
+      if (!response.ok || (data.success === false)) {
+        throw new Error(data.error || 'Failed to fetch price');
+      }
+      return data;
     },
     refetchInterval: 5000,
   });
@@ -59,12 +62,13 @@ export default function TradePage() {
         }),
       });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Order failed');
+      const data = await response.json();
+
+      if (!response.ok || (data.success === false)) {
+        throw new Error(data.error || 'Order failed');
       }
 
-      return response.json();
+      return data;
     },
     onSuccess: () => {
       toast.success('Order submitted successfully!');

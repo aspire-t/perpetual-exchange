@@ -4,39 +4,21 @@ A decentralized perpetual futures exchange built on Next.js and NestJS.
 
 ## Features
 
-- **Trade perpetual futures** with Long and Short positions
+- **Trade perpetual futures** with Long and Short positions (up to 10x leverage)
 - **Real-time price feeds** from Hyperliquid API
-- **Position management** with PnL tracking
-- **Deposit and withdraw** USDC tokens
+- **Position management** with PnL tracking and funding rates
+- **Deposit and withdraw** USDC tokens via smart contract
 - **Wallet integration** via wagmi/viem
 - **Responsive UI** with dark mode support
+- **K-line charts** for technical analysis
 
 ### Bonus Features
 
-- **Funding Rate Mechanism** - 8-hour interval funding payments (FAQ Q9)
-- **Risk Engine** - Margin checks, leverage limits, liquidation detection (FAQ Q10)
+- **Funding Rate Mechanism** - 8-hour interval funding payments between long/short positions
+- **Risk Engine** - Margin checks, leverage limits, liquidation detection
 - **Automatic Liquidations** - Price oracle-based liquidation system
-- **Hyperliquid Hedging** - Real API integration for automatic hedging
+- **Hyperliquid Hedging** - Real API integration for automatic hedging (Mock/Real modes)
 - **Replay Attack Protection** - Nonce-based wallet login security
-
-## Tech Stack
-
-### Frontend
-- **Next.js 16** - React framework with App Router
-- **React 19** - UI library
-- **TypeScript** - Type safety
-- **Tailwind CSS 4** - Styling
-- **wagmi** - Ethereum wallet hooks
-- **viem** - Ethereum client library
-- **TanStack Query** - Data fetching and caching
-- **Jest + Testing Library** - Unit and component testing
-
-### Backend
-- **NestJS** - Node.js framework
-- **TypeORM** - Database ORM
-- **PostgreSQL/SQLite** - Database
-- **Axios** - HTTP client for external APIs
-- **ethers.js** - Ethereum library
 
 ## Quick Start
 
@@ -44,57 +26,156 @@ A decentralized perpetual futures exchange built on Next.js and NestJS.
 
 - Node.js 18+
 - npm or pnpm
-- PostgreSQL (optional, SQLite used by default)
+- Docker (optional, for PostgreSQL and Hardhat node)
 
-### 🚀 Rapid Start
+### Option 1: Docker Compose (Recommended)
 
-1.  **Clone the repository**:
-    ```bash
-    git clone https://github.com/your-username/perpetual-exchange.git
-    cd perpetual-exchange
-    ```
+Start the entire stack with one command:
 
-2.  **Start Backend**:
-    ```bash
-    cd backend
-    npm install
-    cp .env.example .env
-    npm run start:dev
-    ```
-    The backend will start on `http://localhost:3001`.
+```bash
+docker-compose up -d
+```
 
-3.  **Start Frontend**:
-    ```bash
-    cd ../frontend
-    npm install
-    npm run dev
-    ```
-    The frontend will start on `http://localhost:3000`.
+This starts:
+- PostgreSQL on port 5432
+- Hardhat local blockchain on port 8545
 
-4.  **Open Browser**:
-    Navigate to `http://localhost:3000` to start trading!
+Then start the application services:
 
-## Documentation
+```bash
+# Terminal 1 - Backend
+cd backend
+npm install
+cp .env.example .env
+npm run start:dev
 
-- [System Architecture](ARCHITECTURE.md)
-- [AI Usage Report](AI_USAGE_REPORT.md)
-- [Bonus Features](docs/BONUS_FEATURES.md)
+# Terminal 2 - Frontend
+cd frontend
+npm install
+npm run dev
+```
+
+### Option 2: Manual Start
+
+```bash
+# Terminal 1 - Start Hardhat Node
+cd contracts
+npm install
+npx hardhat node
+
+# Terminal 2 - Deploy contracts (in new terminal)
+cd contracts
+npx hardhat run scripts/deposit-deploy.ts --network localhost
+
+# Terminal 3 - Start Backend
+cd backend
+npm install
+cp .env.example .env
+# Update VAULT_ADDRESS and USDC_ADDRESS in .env with deployed addresses
+npm run start:dev
+
+# Terminal 4 - Start Frontend
+cd frontend
+npm install
+npm run dev
+```
+
+Open http://localhost:3000 to start trading.
 
 ## System Architecture
 
-For a detailed breakdown, please see [ARCHITECTURE.md](ARCHITECTURE.md).
+```
+┌─────────────┐     ┌─────────────────────────────────────┐
+│   Frontend  │────▶│         Backend (NestJS)            │
+│   Next.js   │     │  ┌─────────┬─────────┬────────────┐ │
+│             │     │  │  API    │  Trade  │  Hedging   │ │
+│             │     │  │  Layer  │  Engine │   Bot      │ │
+│             │     │  └─────────┴─────────┴────────────┘ │
+└─────────────┘     └─────────────────────────────────────┘
+                           │              │       │
+                           ▼              ▼       ▼
+                    ┌──────────┐   ┌──────────┐ ┌──────────────┐
+                    │PostgreSQL│   │  Vault   │ │ Hyperliquid  │
+                    │ Database │   │ Contract │ │ (Real/Mock)  │
+                    └──────────┘   └──────────┘ └──────────────┘
+                                          │
+                                          ▼
+                                   ┌──────────────┐
+                                   │  Mock USDC   │
+                                   │  (ERC20)     │
+                                   └──────────────┘
+```
 
-### Key Design Decisions
+### Tech Stack
 
-1.  **Hybrid Model**: We utilize an off-chain matching engine for speed and low fees, with on-chain settlement via the `Vault` smart contract for security.
-2.  **Hyperliquid Integration**: To manage protocol risk, we hedge user positions on Hyperliquid (Mock/Real modes supported).
-3.  **Database Strategy**: SQLite is used for development simplicity, while PostgreSQL is configured for production robustness.
+| Layer | Technology |
+|-------|------------|
+| Frontend | Next.js 16, React 19, TypeScript, Tailwind CSS 4 |
+| Frontend State | wagmi, viem, TanStack Query |
+| Frontend Testing | Jest, React Testing Library, Playwright |
+| Backend | NestJS, TypeScript, TypeORM |
+| Backend Testing | Jest, Supertest |
+| Database | PostgreSQL (prod), SQLite (dev) |
+| Smart Contracts | Solidity 0.8.28, Hardhat |
+| Blockchain | Hardhat Network (local), Sepolia (prod) |
+| External DEX | Hyperliquid API |
+| Containerization | Docker Compose |
 
-### Known Limitations
+## Key Design Decisions
 
--   **Centralization**: Order matching and liquidation logic are currently centralized in the backend.
--   **Mock Hedging**: By default, the system runs in mock hedging mode. Real hedging requires API credentials.
--   **Order Types**: Currently, only Market orders are fully supported. Limit orders are planned for future updates.
+### 1. Hybrid Architecture (Off-Chain Matching + On-Chain Settlement)
+
+**Decision**: Off-chain order matching with on-chain deposit/withdrawal.
+
+| Pros | Cons |
+|------|------|
+| Instant execution | Centralization risk |
+| No gas fees for orders | Trust in backend required |
+| Complex order types possible | Potential downtime risk |
+| High-frequency trading support | |
+
+**Mitigation**: Transparent event logging, future plans for decentralized sequencers.
+
+### 2. Mock vs. Real Hedging
+
+**Decision**: Dual-mode hedging system supporting both Mock and Real modes.
+
+- **Mock Mode**: Default for development, simulates successful hedges without API calls
+- **Real Mode**: Production mode with actual Hyperliquid API integration
+
+### 3. Database Strategy
+
+**Decision**: SQLite for development, PostgreSQL for production.
+
+- Zero-config local development
+- Production-grade concurrency with PostgreSQL
+- ORM (TypeORM) abstracts database differences
+
+### 4. Risk Engine Parameters
+
+| Parameter | Value | Rationale |
+|-----------|-------|-----------|
+| Max Leverage | 10x | Balances trader flexibility with protocol safety |
+| Maintenance Margin | 5% | Industry standard for perpetual contracts |
+| Liquidation Threshold | 2.5% | Buffer before position becomes underwater |
+| Funding Interval | 8 hours | Matches industry standard (3x daily) |
+
+## Known Limitations
+
+| Limitation | Impact | Future Work |
+|------------|--------|-------------|
+| **Centralized Matching** | Backend controls order execution | Decentralized sequencer network |
+| **Oracle Dependency** | Price feed is a single point of failure | Chainlink oracle integration |
+| **Single Collateral** | Only USDC supported | Multi-collateral support (USDT, DAI) |
+| **Market Orders Only** | No limit orders or stop-loss | Order book implementation |
+| **Mock Hedging Default** | No real hedging in dev | Testnet integration guide |
+| **No Insurance Fund** | Protocol bears all losses | Insurance fund mechanism |
+
+## Documentation
+
+- [System Architecture](ARCHITECTURE.md) - Detailed architecture breakdown
+- [AI Usage Report](AI_USAGE_REPORT.md) - AI tools and contribution analysis
+- [Bonus Features](docs/BONUS_FEATURES.md) - Advanced feature documentation
 
 ## Project Structure
 
@@ -102,194 +183,60 @@ For a detailed breakdown, please see [ARCHITECTURE.md](ARCHITECTURE.md).
 perpetual-exchange/
 ├── backend/
 │   ├── src/
-│   │   ├── auth/             # Wallet auth with replay protection
-│   │   ├── order/            # Order management
-│   │   ├── position/         # Position management
-│   │   ├── price/            # Price feed service
-│   │   ├── balance/          # Balance management
-│   │   ├── funding/          # Funding rate mechanism
-│   │   ├── risk/             # Risk engine & liquidations
-│   │   ├── hedging/          # Hyperliquid hedging
-│   │   ├── faucet/           # Test token faucet
-│   │   ├── deposit/          # Deposit tracking
-│   │   ├── withdrawal/       # Withdrawal processing
-│   │   ├── indexer/          # Event indexer
-│   │   └── main.ts           # Entry point
-│   └── test/                 # E2E tests
+│   │   ├── auth/           # Wallet authentication & replay protection
+│   │   ├── balance/        # User balance management
+│   │   ├── deposit/        # Deposit tracking
+│   │   ├── withdrawal/     # Withdrawal processing
+│   │   ├── order/          # Order management
+│   │   ├── position/       # Position management & PnL
+│   │   ├── price/          # Price feed service
+│   │   ├── kline/          # K-line/candlestick data
+│   │   ├── funding/        # Funding rate calculations
+│   │   ├── risk/           # Risk engine & liquidations
+│   │   ├── hedging/        # Hyperliquid hedging
+│   │   ├── indexer/        # Blockchain event indexer
+│   │   ├── faucet/         # Test token faucet
+│   │   └── tasks/          # Scheduled tasks
+│   └── test/               # E2E tests
 ├── frontend/
 │   ├── app/
-│   │   ├── trade/            # Trading page
-│   │   ├── positions/        # Positions page
-│   │   ├── deposit/          # Deposit page
-│   │   ├── withdraw/         # Withdraw page
-│   │   └── components/       # Shared components
-│   └── __tests__/            # Unit tests
-├── docs/
-│   └── BONUS_FEATURES.md     # Bonus features documentation
-└── docker-compose.yml        # Docker configuration
+│   │   ├── trade/          # Trading interface
+│   │   ├── positions/      # Position management
+│   │   ├── deposit/        # Deposit page
+│   │   ├── withdraw/       # Withdrawal page
+│   │   └── components/     # Reusable components
+│   └── e2e/                # Playwright E2E tests
+├── contracts/
+│   ├── contracts/
+│   │   ├── Vault.sol       # Main vault contract
+│   │   └── MockUSDC.sol    # Mock ERC20 token
+│   ├── scripts/            # Deployment scripts
+│   └── test/               # Contract tests
+├── e2e/                    # Backend E2E tests
+├── docs/                   # Additional documentation
+└── docker-compose.yml      # Docker configuration
 ```
-
-## API Documentation
-
-### Backend Endpoints
-
-#### Orders
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/order` | Create a new market order |
-| GET | `/order/user/:address` | Get user's orders |
-| GET | `/order/:id` | Get order by ID |
-
-#### Positions
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/position/user/:address` | Get user's positions |
-| GET | `/position/:id` | Get position by ID |
-| POST | `/position/:id/close` | Close a position |
-
-#### Price
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/price/all` | Get current market price |
-
-#### Balance
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/balance/:address` | Get user's balance |
-| POST | `/balance/deposit` | Record a deposit |
-| POST | `/withdraw` | Process withdrawal |
-
-#### Funding Rate
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/funding/rate/:symbol` | Get current funding rate |
-| GET | `/funding/history/:symbol` | Get funding rate history |
-| POST | `/funding/apply` | Apply funding to all positions |
-
-#### Risk Management
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/risk/check/:address` | Check if new position is allowed |
-| GET | `/risk/liquidation/:id` | Check position liquidation status |
-| GET | `/risk/liquidations` | Scan all positions for liquidation risk |
-| POST | `/risk/liquidate/:id` | Execute liquidation for position |
-| POST | `/risk/liquidate-all` | Auto-liquidate all breaching positions |
-| GET | `/risk/max-size/:address` | Get maximum allowed position size |
-
-#### Hedging
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/hedging/:positionId/open` | Open hedge for position |
-| POST | `/hedging/:hedgeId/close` | Close existing hedge |
-| GET | `/hedging/:hedgeId` | Get hedge details |
-| GET | `/hedging/position/:id` | Get all hedges for position |
-| POST | `/hedging/auto/:positionId` | Auto-hedge (called on position open) |
-| POST | `/hedging/sync/:hedgeId` | Sync status with Hyperliquid |
-| GET | `/hedging/volume/total` | Get total hedged volume |
-
-### Request/Response Format
-
-All API responses follow this format:
-
-```json
-{
-  "success": true,
-  "data": { ... },
-  "error": null
-}
-```
-
-#### Example: Create Order
-
-**Request:**
-```json
-POST /order
-{
-  "address": "0x1234567890123456789012345678901234567890",
-  "type": "market",
-  "side": "buy",
-  "size": "1000000000000000000"
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "id": "order-123",
-    "address": "0x1234...",
-    "type": "market",
-    "side": "buy",
-    "size": "1000000000000000000",
-    "status": "pending"
-  }
-}
-```
-
-## Frontend Pages
-
-### Home (`/`)
-Landing page with navigation and wallet connection.
-
-### Trade (`/trade`)
-- Real-time price display
-- Position size input
-- Long/Short order buttons
-- Order success/error feedback
-
-### Positions (`/positions`)
-- List of user's positions
-- Position details: size, entry price, direction (Long/Short)
-- PnL display
-- Close position button
-
-### Deposit (`/deposit`)
-- Vault address display
-- Copy to clipboard functionality
-- Deposit instructions
-- Security warnings
-
-### Withdraw (`/withdraw`)
-- Available balance display
-- Withdrawal amount input
-- Withdrawal processing
-- Success/error feedback
 
 ## Testing
 
-### Frontend Tests
-
 ```bash
+# Frontend tests
 cd frontend
-npm test           # Run tests once
-npm run test:watch # Run tests in watch mode
-```
+npm test
+npm run test:watch
+npm run test:e2e
 
-Frontend tests use Jest with Testing Library. All components are tested with mocked wagmi and React Query hooks.
-
-### Backend Tests
-
-```bash
+# Backend tests
 cd backend
-npm test           # Run unit tests
-npm run test:e2e   # Run E2E tests
-npm run test:cov   # Run tests with coverage
+npm test
+npm run test:e2e
+npm run test:cov
+
+# Contract tests
+cd contracts
+npm test
+npm run coverage
 ```
-
-### Test Coverage
-
-The project maintains high test coverage:
-- Component tests for all pages
-- Unit tests for services
-- E2E tests for critical flows
 
 ## Environment Variables
 
@@ -297,61 +244,43 @@ The project maintains high test coverage:
 
 ```env
 DATABASE_PATH=dev.db
+DATABASE_HOST=localhost
+DATABASE_PORT=5432
+DATABASE_NAME=perpetual_exchange
+DATABASE_USER=postgres
+DATABASE_PASSWORD=postgres
+
 PORT=3001
+RPC_URL=http://localhost:8545
+VAULT_ADDRESS=0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512
+USDC_ADDRESS=0x5FbDB2315678afecb367f032d93F642f64180aa3
+
 HYPERLIQUID_API_URL=https://api.hyperliquid.xyz
 HYPERLIQUID_API_KEY=your_api_key_here
 HYPERLIQUID_WALLET_ADDRESS=your_wallet_address_here
 HYPERLIQUID_PRIVATE_KEY=your_private_key_here
+
 JWT_SECRET=your-jwt-secret
+FRONTEND_URL=http://localhost:3000
 ```
 
-> **Note:** The Hyperliquid credentials are optional. The system runs in mock mode without them, which simulates hedging without real API calls.
+### Frontend (.env.local)
 
-### Frontend
-
-Frontend uses hardcoded API URLs pointing to `http://localhost:3001` for development.
-
-## Docker
-
-Run the entire stack with Docker Compose:
-
-```bash
-docker-compose up -d
+```env
+NEXT_PUBLIC_BACKEND_URL=http://localhost:3001
+NEXT_PUBLIC_VAULT_ADDRESS=0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512
+NEXT_PUBLIC_USDC_ADDRESS=0x5FbDB2315678afecb367f032d93F642f64180aa3
+NEXT_PUBLIC_CHAIN_ID=31337
 ```
-
-This starts:
-- Backend on port 3001
-- Frontend on port 3000
-- PostgreSQL database
-
-## Development
-
-### Code Style
-
-- **Frontend**: ESLint with Next.js config
-- **Backend**: ESLint with NestJS config
-
-Run linting:
-
-```bash
-cd frontend && npm run lint
-cd backend && npm run lint
-```
-
-### Git Workflow
-
-- Use conventional commits
-- Create feature branches
-- All code requires tests
-- PRs must pass CI
 
 ## Contributing
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/new-feature`)
-3. Commit your changes (`git commit -m 'Add new feature'`)
-4. Push to the branch (`git push origin feature/new-feature`)
-5. Open a Pull Request
+3. Write tests following TDD methodology
+4. Commit your changes (`git commit -m 'feat: add new feature'`)
+5. Push to the branch (`git push origin feature/new-feature`)
+6. Open a Pull Request
 
 ## License
 

@@ -34,11 +34,13 @@ export default function WithdrawPage() {
           amount: BigInt(Math.floor(Number(withdrawAmount) * 1e18)).toString(),
         }),
       });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Withdrawal failed');
+      const data = await response.json();
+
+      if (!response.ok || (data.success === false)) {
+        throw new Error(data.error || 'Withdrawal failed');
       }
-      return response.json();
+
+      return data;
     },
     onSuccess: () => {
       toast.success('Withdrawal submitted successfully!');

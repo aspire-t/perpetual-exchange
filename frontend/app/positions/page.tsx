@@ -21,8 +21,11 @@ export default function PositionsPage() {
     queryFn: async () => {
       if (!address) return { success: true, data: [] };
       const response = await fetch(`http://localhost:3001/position/user/${address}`);
-      if (!response.ok) throw new Error('Failed to fetch positions');
-      return response.json();
+      const data = await response.json();
+      if (!response.ok || (data.success === false)) {
+        throw new Error(data.error || 'Failed to fetch positions');
+      }
+      return data;
     },
     enabled: !!address,
   });
@@ -33,8 +36,11 @@ export default function PositionsPage() {
       const response = await fetch(`http://localhost:3001/position/${positionId}/close`, {
         method: 'POST',
       });
-      if (!response.ok) throw new Error('Failed to close position');
-      return response.json();
+      const data = await response.json();
+      if (!response.ok || (data.success === false)) {
+        throw new Error(data.error || 'Failed to close position');
+      }
+      return data;
     },
     onSuccess: () => {
       refetch();
