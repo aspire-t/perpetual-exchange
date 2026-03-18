@@ -9,6 +9,8 @@ import toast from 'react-hot-toast';
 import { useDeposits } from '../hooks/useDeposits';
 import { useWithdrawals } from '../hooks/useWithdrawals';
 import { useOrders } from '../hooks/useOrders';
+import { KlineChart } from './components/KlineChart';
+import { TimeframeSelector } from './components/TimeframeSelector';
 
 const AVAILABLE_SYMBOLS = ['ETH', 'BTC', 'SOL'];
 
@@ -26,6 +28,7 @@ export default function TradePage() {
   const [size, setSize] = useState('');
   const [leverage, setLeverage] = useState(1);
   const [selectedSymbol, setSelectedSymbol] = useState('ETH');
+  const [timeframe, setTimeframe] = useState('15m');
   const [historyTab, setHistoryTab] = useState<HistoryTabType>('orders');
   const queryClient = useQueryClient();
 
@@ -174,12 +177,20 @@ export default function TradePage() {
             <TradeSection {...{ priceData, priceLoading, balanceData, faucetMutation, size, setSize, leverage, setLeverage, submitOrder, handleOrder, selectedSymbol, setSelectedSymbol }} />
           </div>
 
-          {/* Right - Transaction History & Charts (Placeholder) */}
+          {/* Right - Transaction History & Charts */}
           <div className="lg:col-span-1 order-1 lg:order-2 space-y-6">
-            {/* Chart Placeholder - Could be added later */}
-            {/* <div className="h-[400px] bg-[var(--background-secondary)] rounded-xl border border-[var(--border-default)] flex items-center justify-center text-[var(--text-muted)]">
-              Chart Placeholder
-            </div> */}
+            <div className="bg-[var(--background-secondary)] rounded-xl border border-[var(--border-default)] overflow-hidden">
+              <div className="p-4 border-b border-[var(--border-default)] flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-[var(--text-primary)]">{selectedSymbol}/USD</span>
+                  <span className="text-xs text-[var(--text-muted)] bg-[var(--background-tertiary)] px-2 py-1 rounded">Perpetual</span>
+                </div>
+                <TimeframeSelector value={timeframe} onChange={setTimeframe} />
+              </div>
+              <div className="p-4">
+                <KlineChart symbol={selectedSymbol} timeframe={timeframe} />
+              </div>
+            </div>
 
             <HistorySection {...{ historyTab, setHistoryTab, address }} />
           </div>
@@ -249,11 +260,12 @@ function TradeSection({ priceData, priceLoading, balanceData, faucetMutation, si
       {/* Leverage Selector */}
       <div className="mb-6">
         <div className="flex justify-between items-center mb-2">
-          <label className="text-sm font-medium text-[var(--text-secondary)]">Leverage</label>
+          <label htmlFor="leverage-slider" className="text-sm font-medium text-[var(--text-secondary)]">Leverage</label>
           <span className="text-sm font-bold text-[var(--accent-blue)]">{leverage}x</span>
         </div>
         <div className="relative h-6 flex items-center">
           <input
+            id="leverage-slider"
             type="range"
             min="1"
             max="10"

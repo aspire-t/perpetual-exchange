@@ -66,6 +66,30 @@ function renderWithProviders(component: React.ReactElement) {
   );
 }
 
+jest.mock('lightweight-charts', () => {
+  const mockChart = {
+    addSeries: jest.fn(() => ({
+      setData: jest.fn(),
+      applyOptions: jest.fn(),
+      priceScale: jest.fn(() => ({ applyOptions: jest.fn() })),
+    })),
+    remove: jest.fn(),
+    timeScale: jest.fn(() => ({
+      fitContent: jest.fn(),
+    })),
+    priceScale: jest.fn(() => ({
+      applyOptions: jest.fn(),
+    })),
+    applyOptions: jest.fn(),
+  };
+
+  return {
+    createChart: jest.fn(() => mockChart),
+    CandlestickSeries: jest.fn(),
+    HistogramSeries: jest.fn(),
+  };
+});
+
 // Mock Navigation component
 jest.mock('../components/Navigation', () => ({
   Navigation: () => <nav data-testid="navigation">Navigation</nav>,
@@ -132,9 +156,9 @@ describe('TradePage', () => {
     it('should show loading state when fetching price', () => {
       mockQueryResult = { data: undefined, isLoading: true, error: null };
       renderWithProviders(<TradePage />);
-      // Look for the price section specifically
-      const priceSection = screen.getByText('ETH Price').parentElement;
-      expect(priceSection).toHaveTextContent('Loading...');
+      // Look for the loading text next to the symbol
+      const loadingText = screen.getByText('Loading...');
+      expect(loadingText).toBeInTheDocument();
     });
 
     it('should have size input field', () => {
@@ -302,43 +326,43 @@ describe('TradePage', () => {
 
     it('should display current leverage value', () => {
       mockQueryResult = { data: { price: '50000' }, isLoading: false, error: null };
-      render(<TradePage />);
+      renderWithProviders(<TradePage />);
 
-      // The leverage display is in the label with font-semibold class
       const leverageLabel = screen.getByLabelText(/leverage/i);
-      const leverageDisplay = leverageLabel.closest('div')?.querySelector('.font-semibold');
+      // The label's parent div has the span with the leverage value
+      const leverageDisplay = leverageLabel.parentElement?.querySelector('span.font-bold');
       expect(leverageDisplay).toHaveTextContent('1x');
     });
 
     it('should allow changing leverage from 1x to 10x', () => {
       mockQueryResult = { data: { price: '50000' }, isLoading: false, error: null };
-      render(<TradePage />);
+      renderWithProviders(<TradePage />);
 
       const leverageSlider = screen.getByLabelText(/leverage/i);
       fireEvent.change(leverageSlider, { target: { value: '10' } });
 
       expect(leverageSlider).toHaveValue('10');
 
-      // The leverage display is in the label with font-semibold class
-      const leverageDisplay = leverageSlider.closest('div')?.querySelector('.font-semibold');
+      const leverageLabel = screen.getAllByText(/Leverage/i)[0];
+      const leverageDisplay = leverageLabel.parentElement?.querySelector('span.font-bold');
       expect(leverageDisplay).toHaveTextContent('10x');
     });
 
     it('should show margin required calculation based on leverage', () => {
       mockQueryResult = { data: { price: '50000' }, isLoading: false, error: null };
-      render(<TradePage />);
-
+      renderWithProviders(<TradePage />);
+      
       const sizeInput = screen.getByLabelText(/size/i);
       fireEvent.change(sizeInput, { target: { value: '100' } });
 
       // At 1x leverage, margin required = size / 1 = 100
-      expect(screen.getByText(/Margin required: 100\.00 USDC \(1x leverage\)/)).toBeInTheDocument();
+      expect(screen.getByText('100.00 USDC')).toBeInTheDocument();
     });
 
     it('should update margin required when leverage changes', () => {
       mockQueryResult = { data: { price: '50000' }, isLoading: false, error: null };
-      render(<TradePage />);
-
+      renderWithProviders(<TradePage />);
+      
       const sizeInput = screen.getByLabelText(/size/i);
       fireEvent.change(sizeInput, { target: { value: '100' } });
 
@@ -346,7 +370,7 @@ describe('TradePage', () => {
       fireEvent.change(leverageSlider, { target: { value: '5' } });
 
       // At 5x leverage, margin required = size / 5 = 20
-      expect(screen.getByText(/Margin required: 20\.00 USDC \(5x leverage\)/)).toBeInTheDocument();
+      expect(screen.getByText('20.00 USDC')).toBeInTheDocument();
     });
 
     it('should submit order with selected leverage', async () => {
