@@ -14,6 +14,7 @@ import { HedgingService } from '../hedging/hedging.service';
 import { PriceService } from '../price/price.service';
 import { RiskEngineService } from '../risk/risk-engine.service';
 import { Position } from '../entities/Position.entity';
+import { ethers } from 'ethers';
 
 @Injectable()
 export class OrderService {
@@ -251,8 +252,7 @@ export class OrderService {
       }
 
       // Convert decimal price to wei (18 decimals) for internal use
-      const priceDecimal = parseFloat(priceResult.data.price);
-      const currentPrice = BigInt(Math.floor(priceDecimal * 1e18));
+      const currentPrice = ethers.parseUnits(priceResult.data.price, 18);
 
       // Get all pending limit orders
       const pendingOrders = await this.orderRepository.find({
@@ -387,8 +387,7 @@ export class OrderService {
 
     // Convert decimal price to wei (18 decimals) for internal use
     // e.g., "2093.7" -> "2093700000000000000000"
-    const priceDecimal = parseFloat(priceResult.data.price);
-    const currentPrice = BigInt(Math.floor(priceDecimal * 1e18));
+    const currentPrice = ethers.parseUnits(priceResult.data.price, 18);
 
     // Risk check for new position
     const riskCheck = await this.riskEngineService.checkNewPositionRisk(
@@ -420,6 +419,49 @@ export class OrderService {
       return { success: false, error: lockResult.error };
     }
 
+    // Calculate trading fee: 0.1% based on notional value
+    // Notional value = size * currentPrice / 1e18
+    const notionalValue = (size * currentPrice) / BigInt(1e18);
+    const tradingFee = notionalValue / BigInt(1000); // 0.1% = 1/1000
+
+    // Convert fee to USDC decimals (6)
+    const tradingFeeUSDC = (tradingFee + BigInt(1e12) - BigInt(1)) / BigInt(1e12);
+
+    // Deduct trading fee
+    const feeResult = await this.balanceService.deductFee(user.id, tradingFeeUSDC);
+    if (!feeResult.success) {
+      // Release margin if fee deduction fails
+      await this.balanceService.releaseMargin(user.id, marginRequiredUSDC);
+      return { success: false, error: feeResult.error };
+    }
+
+    // STP Execution: Execute hedge FIRST to get exact execution price
+    // Long position -> Short hedge, Short position -> Long hedge
+    const isShortHedge = side === OrderSide.LONG;
+    const hedgeResult = await this.hedgingService.executeHedgeOrder(
+      symbol,
+      size,
+      isShortHedge,
+    );
+
+    if (!hedgeResult.success || !hedgeResult.data) {
+      // Refund margin and fee if hedge fails
+      await this.balanceService.releaseMargin(user.id, marginRequiredUSDC);
+      // Assuming we need to add fee back, we can just add it to user balance
+      // Wait, we don't have a refundFee method, let's release margin with fee as PnL?
+      // releaseMargin(userId, marginAmount, pnl) -> marginAmount + pnl will be added back.
+      // So we can do:
+      await this.balanceService.releaseMargin(user.id, BigInt(0), tradingFeeUSDC);
+      return { success: false, error: `Hedge execution failed: ${hedgeResult.error}` };
+    }
+
+    let exactCurrentPrice: bigint;
+    try {
+      exactCurrentPrice = ethers.parseUnits(hedgeResult.data.fillPrice, 18);
+    } catch (e) {
+      exactCurrentPrice = currentPrice;
+    }
+
     // Check for existing same-direction position
     const existingPositions = await this.positionRepository.find({
       where: { userId: user.id, isOpen: true, isLong: side === OrderSide.LONG },
@@ -434,12 +476,12 @@ export class OrderService {
       const increaseResult = await this.positionService.increasePosition(
         existingPosition.id,
         size,
-        currentPrice,
+        exactCurrentPrice,
       );
 
       if (!increaseResult.success) {
-        // Release margin on failure
-        await this.balanceService.releaseMargin(user.id, marginRequiredUSDC);
+        // This is a rare error since we already hedged.
+        this.logger.error(`Failed to increase position after hedge: ${increaseResult.error}`);
         return { success: false, error: increaseResult.error };
       }
 
@@ -450,13 +492,12 @@ export class OrderService {
       const openResult = await this.positionService.openPosition(
         userAddress,
         size,
-        currentPrice,
+        exactCurrentPrice,
         side === OrderSide.LONG,
       );
 
       if (!openResult.success) {
-        // Release margin on failure
-        await this.balanceService.releaseMargin(user.id, marginRequiredUSDC);
+        this.logger.error(`Failed to open position after hedge: ${openResult.error}`);
         return { success: false, error: openResult.error };
       }
 
@@ -464,15 +505,14 @@ export class OrderService {
       positionEntryPrice = openResult.data.entryPrice;
     }
 
-    // Trigger hedge (best-effort, don't fail order if hedge fails)
-    let hedgeError: string | undefined;
-    const hedgeResult = await this.hedgingService.autoHedge(positionId);
-    if (!hedgeResult.success) {
-      this.logger.warn(
-        `Hedge failed for position ${positionId}: ${hedgeResult.error}`,
-      );
-      hedgeError = hedgeResult.error;
-    }
+    // Create the Hedge entity record and link it to the positionId
+    await this.hedgingService.createHedgeRecord(
+      positionId,
+      size,
+      exactCurrentPrice,
+      isShortHedge,
+      hedgeResult.data.orderId,
+    );
 
     // Create order record
     const order = this.orderRepository.create();
@@ -481,7 +521,7 @@ export class OrderService {
     order.side = side;
     order.size = size.toString();
     order.leverage = leverage.toString();
-    order.fillPrice = currentPrice.toString();
+    order.fillPrice = exactCurrentPrice.toString();
     order.status = OrderStatus.FILLED;
 
     await this.orderRepository.save(order);
@@ -498,7 +538,6 @@ export class OrderService {
         positionId,
         entryPrice: positionEntryPrice,
         marginLocked: marginRequired.toString(),
-        hedgeError,
       },
     };
   }

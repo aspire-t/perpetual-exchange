@@ -15,7 +15,8 @@ export default function WithdrawPage() {
     queryKey: ['balance', address],
     queryFn: async () => {
       if (!address) return { success: true, data: { balance: '0' } };
-      const response = await fetch(`http://localhost:3001/balance/${address}`);
+      const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      const response = await fetch(`${BACKEND_URL}/balance/${address}`);
       if (!response.ok) throw new Error('Failed to fetch balance');
       return response.json();
     },
@@ -26,7 +27,8 @@ export default function WithdrawPage() {
   const withdraw = useMutation({
     mutationFn: async (withdrawAmount: string) => {
       if (!address) throw new Error('Wallet not connected');
-      const response = await fetch('http://localhost:3001/withdraw', {
+      const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      const response = await fetch(`${BACKEND_URL}/withdraw`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

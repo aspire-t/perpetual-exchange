@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { Position } from '../entities/Position.entity';
 import { User } from '../entities/User.entity';
 import { PriceService } from '../price/price.service';
+import { ethers } from 'ethers';
 
 @Injectable()
 export class PositionService {
@@ -81,22 +82,24 @@ export class PositionService {
 
     // Get current price (assuming ETH for now)
     const priceResult = await this.priceService.getPrice('ETH');
-    const currentPrice =
+    const currentPriceBigInt =
       priceResult.success && priceResult.data
-        ? priceResult.data.price // Already a string
-        : position.entryPrice;
+        ? ethers.parseUnits(priceResult.data.price, 18)
+        : BigInt(position.entryPrice);
 
     // Calculate PnL - convert strings to BigInt for calculation
-    const pnl = this.calculatePnL(
+    const rawPnl = this.calculatePnL(
       BigInt(position.size),
       BigInt(position.entryPrice),
-      BigInt(currentPrice),
+      currentPriceBigInt,
       position.isLong,
     );
+    const fundingPaid = BigInt(position.fundingPaid || '0');
+    const pnl = rawPnl - fundingPaid;
 
     // Update position - store as strings
     position.isOpen = false;
-    position.exitPrice = currentPrice.toString();
+    position.exitPrice = currentPriceBigInt.toString();
     position.pnl = pnl.toString();
     position.closedAt = new Date();
 
@@ -206,16 +209,21 @@ export class PositionService {
 
     // Calculate realized PnL for the reduced portion
     const entryPrice = BigInt(position.entryPrice);
-    const realizedPnl = this.calculatePnL(
+    const rawRealizedPnl = this.calculatePnL(
       reduceSize,
       entryPrice,
       currentPrice,
       position.isLong,
     );
 
-    // Update position size
+    const fundingPaid = BigInt(position.fundingPaid || '0');
+    const proportionalFunding = (fundingPaid * reduceSize) / currentPositionSize;
+    const realizedPnl = rawRealizedPnl - proportionalFunding;
+
+    // Update position size and funding paid
     const newSize = currentPositionSize - reduceSize;
     position.size = newSize.toString();
+    position.fundingPaid = (fundingPaid - proportionalFunding).toString();
 
     // If position is fully closed, mark as closed
     if (newSize === BigInt(0)) {

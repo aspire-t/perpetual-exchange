@@ -36,7 +36,8 @@ export default function TradePage() {
   const { data: priceData, isLoading: priceLoading } = useQuery({
     queryKey: ['price', selectedSymbol],
     queryFn: async () => {
-      const response = await fetch(`http://localhost:3001/price/${selectedSymbol}`);
+      const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      const response = await fetch(`${BACKEND_URL}/price/${selectedSymbol}`);
       const data = await response.json();
       if (!response.ok || (data.success === false)) {
         throw new Error(data.error || 'Failed to fetch price');
@@ -51,7 +52,8 @@ export default function TradePage() {
     queryKey: ['balance', address],
     queryFn: async () => {
       if (!address) return null;
-      const response = await fetch(`http://localhost:3001/balance/${address}`);
+      const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      const response = await fetch(`${BACKEND_URL}/balance/${address}`);
       const data = await response.json();
       if (!response.ok || (data.success === false)) {
         throw new Error(data.error || 'Failed to fetch balance');

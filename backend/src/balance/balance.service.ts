@@ -203,4 +203,56 @@ export class BalanceService {
       await queryRunner.release();
     }
   }
+
+  /**
+   * Deduct trading fee from user's available balance using database transaction
+   */
+  async deductFee(
+    userId: string,
+    feeAmount: bigint,
+  ): Promise<{ success: boolean; error?: string }> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const user = await queryRunner.manager.findOne(User, {
+        where: { id: userId },
+      });
+
+      if (!user) {
+        await queryRunner.release();
+        return { success: false, error: 'User not found' };
+      }
+
+      const currentBalance = BigInt(user.balance);
+      if (currentBalance < feeAmount) {
+        await queryRunner.release();
+        return {
+          success: false,
+          error: `Insufficient balance for fee: has ${currentBalance.toString()}, needs ${feeAmount.toString()}`,
+        };
+      }
+
+      user.balance = (currentBalance - feeAmount).toString();
+      await queryRunner.manager.save(user);
+
+      await queryRunner.commitTransaction();
+
+      this.logger.log(
+        `Fee deducted for user ${userId}: ${feeAmount.toString()}`,
+      );
+
+      return { success: true };
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      this.logger.error(`Failed to deduct fee: ${error.message}`);
+      return {
+        success: false,
+        error: `Failed to deduct fee: ${error.message}`,
+      };
+    } finally {
+      await queryRunner.release();
+    }
+  }
 }

@@ -20,7 +20,8 @@ export default function PositionsPage() {
     queryKey: ['positions', address],
     queryFn: async () => {
       if (!address) return { success: true, data: [] };
-      const response = await fetch(`http://localhost:3001/position/user/${address}`);
+      const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      const response = await fetch(`${BACKEND_URL}/position/user/${address}`);
       const data = await response.json();
       if (!response.ok || (data.success === false)) {
         throw new Error(data.error || 'Failed to fetch positions');
@@ -33,7 +34,8 @@ export default function PositionsPage() {
   // Close position mutation
   const closePosition = useMutation({
     mutationFn: async (positionId: string) => {
-      const response = await fetch(`http://localhost:3001/position/${positionId}/close`, {
+      const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      const response = await fetch(`${BACKEND_URL}/position/${positionId}/close`, {
         method: 'POST',
       });
       const data = await response.json();
@@ -89,11 +91,10 @@ export default function PositionsPage() {
               >
                 <div className="flex justify-between items-start mb-4">
                   <span
-                    className={`px-2 py-1 rounded text-xs font-semibold ${
-                      position.isLong
+                    className={`px-2 py-1 rounded text-xs font-semibold ${position.isLong
                         ? 'bg-[var(--success-green-muted)] text-[var(--success-green)] border border-[var(--success-green)]'
                         : 'bg-[var(--danger-red-muted)] text-[var(--danger-red)] border border-[var(--danger-red)]'
-                    }`}
+                      }`}
                   >
                     {position.isLong ? 'Long' : 'Short'}
                   </span>

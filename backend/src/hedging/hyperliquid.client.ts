@@ -167,7 +167,7 @@ export class HyperliquidClient {
           const priceRes = await this.priceServiceGetPrice(coin);
           if (priceRes) {
              const basePrice = parseFloat(priceRes);
-             const slippage = isShort ? 0.95 : 1.05; // 5% slippage
+             const slippage = isShort ? 0.995 : 1.005; // 0.5% slippage
              action.orders[0].p = (basePrice * slippage).toFixed(6); // 6 decimals usually safe?
              action.orders[0].t = { limit: { tif: 'Ioc' } }; // Immediate or cancel for market
           } else {

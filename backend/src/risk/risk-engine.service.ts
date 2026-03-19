@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { Position } from '../entities/Position.entity';
 import { User } from '../entities/User.entity';
 import { PriceService } from '../price/price.service';
+import { ethers } from 'ethers';
 
 /**
  * Risk Engine Service
@@ -267,9 +268,10 @@ export class RiskEngineService {
       return '999'; // No risk if no position
     }
 
-    // Equity = margin + unrealized PnL
+    // Equity = margin + unrealized PnL - fundingPaid
     const margin = positionSize / BigInt(this.MAX_LEVERAGE);
-    const equity = margin + unrealizedPnl;
+    const fundingPaid = BigInt(position.fundingPaid || '0');
+    const equity = margin + unrealizedPnl - fundingPaid;
 
     if (equity <= BigInt(0)) {
       return '0'; // Already liquidated
@@ -296,7 +298,8 @@ export class RiskEngineService {
     );
 
     const margin = BigInt(position.size) / BigInt(this.MAX_LEVERAGE);
-    const equity = margin + unrealizedPnl;
+    const fundingPaid = BigInt(position.fundingPaid || '0');
+    const equity = margin + unrealizedPnl - fundingPaid;
 
     if (equity <= BigInt(0)) {
       return '0';
@@ -432,7 +435,7 @@ export class RiskEngineService {
         };
       }
 
-      const currentPrice = BigInt(priceResult.data.price);
+      const currentPrice = ethers.parseUnits(priceResult.data.price, 18);
 
       for (const position of openPositions) {
         const liquidationCheck = await this.checkLiquidation(
@@ -514,7 +517,7 @@ export class RiskEngineService {
       };
     }
 
-    const currentPrice = BigInt(priceResult.data.price);
+    const currentPrice = ethers.parseUnits(priceResult.data.price, 18);
 
     for (const positionAtRisk of liquidationResult.data!.positionsAtRisk) {
       const shouldLiquidate =

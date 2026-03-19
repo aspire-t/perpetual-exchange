@@ -29,6 +29,75 @@ export class HedgingService {
   ) {}
 
   /**
+   * Execute hedge order directly without requiring a position ID.
+   * This enables Straight Through Processing (STP) where we hedge first,
+   * get the exact execution price, and then open the user position at that price.
+   */
+  async executeHedgeOrder(
+    symbol: string,
+    size: bigint,
+    isShort: boolean,
+  ): Promise<{ success: boolean; data?: { orderId: string; fillPrice: string }; error?: string }> {
+    try {
+      const orderResult = await this.hyperliquidClient.placeOrder(
+        symbol,
+        this.weiToTokenSize(size),
+        isShort,
+      );
+
+      if (!orderResult.success || !orderResult.data) {
+        return {
+          success: false,
+          error: `Failed to execute hedge order: ${orderResult.error}`,
+        };
+      }
+
+      return {
+        success: true,
+        data: {
+          orderId: orderResult.data.orderId,
+          fillPrice: orderResult.data.price || '0',
+        },
+      };
+    } catch (error) {
+      this.logger.error(`Failed to execute hedge order: ${error.message}`);
+      return {
+        success: false,
+        error: `Failed to execute hedge order: ${error.message}`,
+      };
+    }
+  }
+
+  /**
+   * Create hedge record after STP execution
+   */
+  async createHedgeRecord(
+    positionId: string,
+    size: bigint,
+    entryPrice: bigint,
+    isShort: boolean,
+    hyperliquidOrderId: string,
+  ): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      const hedge = this.hedgeRepository.create({
+        positionId,
+        size: size.toString(),
+        entryPrice: entryPrice.toString(),
+        isShort,
+        status: HedgeStatus.OPEN,
+        hyperliquidOrderId,
+      });
+
+      await this.hedgeRepository.save(hedge);
+
+      return { success: true, data: hedge };
+    } catch (error) {
+      this.logger.error(`Failed to create hedge record: ${error.message}`);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
    * Open a hedge for a position
    * Creates opposite position on Hyperliquid:
    * - Long position -> Short hedge
