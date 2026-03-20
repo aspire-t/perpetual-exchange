@@ -4,10 +4,11 @@ import Link from 'next/link';
 import { Navigation } from './components/Navigation';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetchJson } from './lib/api';
+import { formatAmountFromUnits } from './lib/units';
 
 function formatUsdFromWei(value?: string) {
   if (!value) return '--';
-  return `$${(Number(BigInt(value)) / 1e18).toLocaleString(undefined, {
+  return `$${Number(formatAmountFromUnits(value, 18)).toLocaleString(undefined, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;

@@ -127,6 +127,15 @@ describe('OrderController', () => {
   });
 
   describe('cancelOrder', () => {
+    it('should require JwtAuthGuard', () => {
+      const guards = Reflect.getMetadata(
+        GUARDS_METADATA,
+        OrderController.prototype.cancelOrder,
+      );
+
+      expect(guards).toContain(JwtAuthGuard);
+    });
+
     it('should cancel an order', async () => {
       const mockResponse = {
         success: true,
@@ -135,10 +144,15 @@ describe('OrderController', () => {
 
       mockOrderService.cancelOrder.mockResolvedValue(mockResponse);
 
-      const result = await controller.cancelOrder('order-1');
+      const result = await controller.cancelOrder('order-1', {
+        user: { address: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266' },
+      } as any);
 
       expect(result).toEqual(mockResponse);
-      expect(orderService.cancelOrder).toHaveBeenCalledWith('order-1');
+      expect(orderService.cancelOrder).toHaveBeenCalledWith(
+        'order-1',
+        '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
+      );
     });
   });
 });

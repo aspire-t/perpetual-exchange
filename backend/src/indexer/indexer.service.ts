@@ -95,6 +95,7 @@ export class IndexerService {
       processedEvent.blockNumber = blockNumber;
       processedEvent.userId = user.id;
       processedEvent.amount = amount.toString();
+      processedEvent.status = 'success';
 
       // Update user balance
       const currentBalance = BigInt(user.balance || '0');
@@ -175,6 +176,7 @@ export class IndexerService {
       processedEvent.blockNumber = blockNumber;
       processedEvent.userId = user.id;
       processedEvent.amount = amount.toString();
+      processedEvent.status = 'success';
 
       // Update user locked balance (deduct)
       const lockedBalance = BigInt(user.locked || '0');
@@ -182,7 +184,14 @@ export class IndexerService {
         this.logger.error(
           `User ${user.address} locked balance ${lockedBalance} is less than withdrawal amount ${amount}`,
         );
-        throw new Error('Insufficient locked balance for withdrawal event');
+        processedEvent.status = 'failed';
+        processedEvent.errorReason = 'Insufficient locked balance for withdrawal event';
+        await queryRunner.manager.save(processedEvent);
+        await queryRunner.commitTransaction();
+        return {
+          success: false,
+          error: 'Failed to process withdraw event: Insufficient locked balance for withdrawal event',
+        };
       }
       user.locked = (lockedBalance - amount).toString();
       await queryRunner.manager.save(user);

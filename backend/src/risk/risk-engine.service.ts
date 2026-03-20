@@ -31,9 +31,6 @@ export class RiskEngineService {
   // Maintenance margin ratio (5%)
   private readonly MAINTENANCE_MARGIN_RATIO = 0.05;
 
-  // Liquidation threshold
-  private readonly LIQUIDATION_THRESHOLD = 0.025;
-
   constructor(
     @InjectRepository(Position)
     private positionRepository: Repository<Position>,
@@ -43,8 +40,24 @@ export class RiskEngineService {
     private readonly configService: ConfigService,
   ) {}
 
+  private getWarningHealthFactor(): number {
+    return this.configService.get<number>('WARNING_HEALTH_FACTOR', 1.0);
+  }
+
+  private getLiquidationThreshold(): number {
+    return this.configService.get<number>('LIQUIDATION_THRESHOLD', 0.8);
+  }
+
   private getRiskPriceSymbol(): string {
     return this.configService.get<string>('RISK_PRICE_SYMBOL', 'ETH');
+  }
+
+  private getPositionLeverage(position: Position): bigint {
+    const leverage = BigInt(position.leverage || '0');
+    if (leverage > BigInt(0)) {
+      return leverage;
+    }
+    return BigInt(this.MAX_LEVERAGE);
   }
 
   /**
@@ -213,7 +226,7 @@ export class RiskEngineService {
     );
 
     const shouldLiquidate =
-      parseFloat(healthFactor) < this.LIQUIDATION_THRESHOLD;
+      parseFloat(healthFactor) < this.getLiquidationThreshold();
 
     // Calculate distance to liquidation
     const liquidationPrice = BigInt(position.liquidationPrice || '0');
@@ -275,7 +288,7 @@ export class RiskEngineService {
     }
 
     // Equity = margin + unrealized PnL - fundingPaid
-    const margin = positionSize / BigInt(this.MAX_LEVERAGE);
+    const margin = positionSize / this.getPositionLeverage(position);
     const fundingPaid = BigInt(position.fundingPaid || '0');
     const equity = margin + unrealizedPnl - fundingPaid;
 
@@ -303,7 +316,7 @@ export class RiskEngineService {
       position.isLong,
     );
 
-    const margin = BigInt(position.size) / BigInt(this.MAX_LEVERAGE);
+    const margin = BigInt(position.size) / this.getPositionLeverage(position);
     const fundingPaid = BigInt(position.fundingPaid || '0');
     const equity = margin + unrealizedPnl - fundingPaid;
 
@@ -449,9 +462,12 @@ export class RiskEngineService {
           currentPrice,
         );
 
-        // Add positions with low health factor (< 1.5 is at risk)
+        // Add positions with low health factor
         const healthFactor = parseFloat(liquidationCheck.healthFactor);
-        if (healthFactor < 1.5 || liquidationCheck.shouldLiquidate) {
+        if (
+          healthFactor < this.getWarningHealthFactor() ||
+          liquidationCheck.shouldLiquidate
+        ) {
           const liqPrice = BigInt(position.liquidationPrice || '0');
           const distance =
             currentPrice > liqPrice
@@ -527,7 +543,7 @@ export class RiskEngineService {
 
     for (const positionAtRisk of liquidationResult.data!.positionsAtRisk) {
       const shouldLiquidate =
-        parseFloat(positionAtRisk.healthFactor) < this.LIQUIDATION_THRESHOLD;
+        parseFloat(positionAtRisk.healthFactor) < this.getLiquidationThreshold();
 
       if (shouldLiquidate) {
         const result = await this.executeLiquidation(

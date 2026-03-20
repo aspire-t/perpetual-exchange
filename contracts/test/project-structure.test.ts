@@ -8,14 +8,14 @@ describe("Project Structure", function () {
     expect(config.default.networks.localhost.url).to.equal("http://127.0.0.1:8545");
   });
 
-  it("should have solidity version 0.8.20 configured", async function () {
+  it("should have solidity version 0.8.28 configured", async function () {
     const config = await import("../hardhat.config");
     const solidityConfig = config.default.solidity;
 
     if (typeof solidityConfig === "string") {
-      expect(solidityConfig).to.equal("0.8.20");
+      expect(solidityConfig).to.equal("0.8.28");
     } else {
-      expect(solidityConfig.version).to.equal("0.8.20");
+      expect(solidityConfig.version).to.equal("0.8.28");
     }
   });
 

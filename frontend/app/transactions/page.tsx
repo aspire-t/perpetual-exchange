@@ -6,6 +6,7 @@ import { useWithdrawals } from '../hooks/useWithdrawals';
 import { useOrders } from '../hooks/useOrders';
 import { useAccount } from 'wagmi';
 import { Navigation } from '../components/Navigation';
+import { formatAmountFromUnits } from '../lib/units';
 
 type TabType = 'deposits' | 'withdrawals' | 'orders';
 
@@ -118,7 +119,7 @@ function DepositsTab({ userAddress }: { userAddress: string }) {
                 {new Date(deposit.createdAt).toLocaleString()}
               </td>
               <td className="py-3 text-[var(--text-primary)]">
-                {(Number(deposit.amount) / 1000000).toFixed(2)} USDC
+                {formatAmountFromUnits(deposit.amount, 6)} USDC
               </td>
               <td className="py-3">
                 <StatusBadge status={deposit.status} />
@@ -210,7 +211,7 @@ function WithdrawalsTab({ userAddress }: { userAddress: string }) {
                 {new Date(withdrawal.createdAt).toLocaleString()}
               </td>
               <td className="py-3 text-[var(--text-primary)]">
-                {(Number(withdrawal.amount) / 1000000).toFixed(2)} USDC
+                {formatAmountFromUnits(withdrawal.amount, 6)} USDC
               </td>
               <td className="py-3">
                 <WithdrawalStatusBadge status={withdrawal.status} />
@@ -315,10 +316,12 @@ function OrdersTab({ userAddress }: { userAddress: string }) {
                 {order.type.toUpperCase()}
               </td>
               <td className="py-3 text-[var(--text-primary)]">
-                {(Number(order.size) / 1000000).toFixed(2)} USDC
+                {formatAmountFromUnits(order.size, 18)}
               </td>
               <td className="py-3 text-[var(--text-primary)]">
-                {order.fillPrice || order.limitPrice || '-'}
+                {order.fillPrice || order.limitPrice
+                  ? `$${formatAmountFromUnits(order.fillPrice || order.limitPrice, 18)}`
+                  : '-'}
               </td>
               <td className="py-3">
                 <OrderStatusBadge status={order.status} />

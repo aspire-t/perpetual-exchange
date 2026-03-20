@@ -5,6 +5,7 @@ import { Position } from '../entities/Position.entity';
 import { User } from '../entities/User.entity';
 import { PriceService } from '../price/price.service';
 import { ethers } from 'ethers';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class PositionService {
@@ -14,7 +15,15 @@ export class PositionService {
     @InjectRepository(User)
     private userRepository: Repository<User>,
     private readonly priceService: PriceService,
+    private readonly configService: ConfigService,
   ) {}
+
+  private getPositionPriceSymbol(): string {
+    return this.configService.get<string>(
+      'POSITION_PRICE_SYMBOL',
+      this.configService.get<string>('RISK_PRICE_SYMBOL', 'ETH'),
+    );
+  }
 
   async openPosition(
     userAddress: string,
@@ -80,8 +89,9 @@ export class PositionService {
       return { success: false, error: 'Position is already closed' };
     }
 
-    // Get current price (assuming ETH for now)
-    const priceResult = await this.priceService.getPrice('ETH');
+    const priceResult = await this.priceService.getPrice(
+      this.getPositionPriceSymbol(),
+    );
     const currentPriceBigInt =
       priceResult.success && priceResult.data
         ? ethers.parseUnits(priceResult.data.price, 18)

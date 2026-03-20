@@ -31,6 +31,12 @@ jest.mock('../components/Navigation', () => ({
   Navigation: () => <nav data-testid="navigation">Navigation</nav>,
 }));
 
+jest.mock('../hooks/useAuthToken', () => ({
+  useAuthToken: () => ({
+    ensureToken: jest.fn().mockResolvedValue('test-token'),
+  }),
+}));
+
 describe('PositionsPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();

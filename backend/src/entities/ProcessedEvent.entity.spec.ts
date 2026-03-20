@@ -16,14 +16,14 @@ describe('ProcessedEvent Entity', () => {
     expect(processedEvent.amount).toBe('1000000000');
   });
 
-  it('should initialize amount to "0" by default', () => {
+  it('should allow amount to be unset before persistence', () => {
     const processedEvent = new ProcessedEvent();
     processedEvent.eventTxHash = '0xabc123def456';
     processedEvent.eventName = 'Deposit';
     processedEvent.blockNumber = 12345678;
     processedEvent.userId = 'user-uuid';
 
-    expect(processedEvent.amount).toBe('0');
+    expect(processedEvent.amount).toBeUndefined();
   });
 });
 
@@ -74,14 +74,14 @@ describe('ProcessedEvent Entity - Event Scenarios', () => {
     expect(processedEvent.amount).toBe('1000000000000000000000');
   });
 
-  it('should have createdAt automatically set', () => {
+  it('should have undefined createdAt before persistence', () => {
     const processedEvent = new ProcessedEvent();
     processedEvent.eventTxHash = '0xabc123def456';
     processedEvent.eventName = 'Deposit';
     processedEvent.blockNumber = 12345678;
     processedEvent.userId = 'user-uuid';
 
-    expect(processedEvent.createdAt).toBeInstanceOf(Date);
+    expect(processedEvent.createdAt).toBeUndefined();
   });
 
   it('should track events by blockNumber (indexed)', () => {

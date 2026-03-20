@@ -25,6 +25,12 @@ export class ProcessedEvent {
   @Column('varchar', { default: '0' })
   amount: string;
 
+  @Column({ default: 'success' })
+  status: string;
+
+  @Column({ nullable: true })
+  errorReason?: string;
+
   @CreateDateColumn()
   createdAt: Date;
 }

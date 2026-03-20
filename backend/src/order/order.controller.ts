@@ -100,7 +100,8 @@ export class OrderController {
   }
 
   @Post(':id/cancel')
-  async cancelOrder(@Param('id') id: string) {
-    return this.orderService.cancelOrder(id);
+  @UseGuards(JwtAuthGuard)
+  async cancelOrder(@Param('id') id: string, @Req() req: { user: JwtUserPayload }) {
+    return this.orderService.cancelOrder(id, req.user.address);
   }
 }

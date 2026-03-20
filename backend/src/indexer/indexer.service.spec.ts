@@ -442,6 +442,10 @@ describe('IndexerService', () => {
         }
         return Promise.resolve(null);
       });
+      mockQueryRunner.manager.create.mockImplementation((_, data) => ({ ...data }));
+      mockQueryRunner.manager.save.mockImplementation(async (obj) => ({
+        ...obj,
+      }));
 
       const result = await indexerService.processWithdrawEvent(
         userAddress,
@@ -452,7 +456,7 @@ describe('IndexerService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Insufficient locked balance');
-      expect(mockQueryRunner.manager.save).not.toHaveBeenCalled();
+      expect(mockQueryRunner.manager.save).toHaveBeenCalledTimes(1);
     });
   });
 

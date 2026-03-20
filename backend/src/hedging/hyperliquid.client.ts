@@ -28,6 +28,14 @@ export interface HyperliquidPosition {
   unrealizedPnl: string;
 }
 
+export type HyperliquidErrorCode =
+  | 'CONFIG_ERROR'
+  | 'ASSET_NOT_FOUND'
+  | 'API_ERROR'
+  | 'NETWORK_ERROR'
+  | 'NO_POSITION'
+  | 'UNKNOWN_ERROR';
+
 /**
  * HyperliquidClient - Real API integration for hedging
  *
@@ -64,6 +72,14 @@ export class HyperliquidClient {
       this.configService.get<string>('NODE_ENV') !== 'production';
   }
 
+  private failure(
+    error: string,
+    code: HyperliquidErrorCode,
+    retryable: boolean = false,
+  ): { success: false; error: string; code: HyperliquidErrorCode; retryable: boolean } {
+    return { success: false, error, code, retryable };
+  }
+
   /**
    * Place an order on Hyperliquid with real API integration
    * @param coin - Asset symbol (e.g., 'ETH')
@@ -85,6 +101,8 @@ export class HyperliquidClient {
       price?: string;
     };
     error?: string;
+    code?: HyperliquidErrorCode;
+    retryable?: boolean;
   }> {
     try {
       // Check if we have credentials for real trading
@@ -93,11 +111,11 @@ export class HyperliquidClient {
 
       if (!hasCredentials) {
         if (!this.isTestnet) {
-          return {
-            success: false,
-            error:
-              'Hyperliquid credentials are required in production environment',
-          };
+          return this.failure(
+            'Hyperliquid credentials are required in production environment',
+            'CONFIG_ERROR',
+            false,
+          );
         }
         this.logger.warn(
           'Hyperliquid credentials not configured, using mock mode',
@@ -110,10 +128,11 @@ export class HyperliquidClient {
       return await this.placeRealOrder(coin, size, isShort, limitPrice);
     } catch (error) {
       this.logger.error(`Failed to place order: ${error.message}`);
-      return {
-        success: false,
-        error: `Failed to place order: ${error.message}`,
-      };
+      return this.failure(
+        `Failed to place order: ${error.message}`,
+        'UNKNOWN_ERROR',
+        false,
+      );
     }
   }
 
@@ -129,11 +148,17 @@ export class HyperliquidClient {
     success: boolean;
     data?: { orderId: string; status: string; txHash?: string; price?: string };
     error?: string;
+    code?: HyperliquidErrorCode;
+    retryable?: boolean;
   }> {
     try {
       const assetIndex = await this.getAssetIndex(coin);
       if (assetIndex === undefined) {
-        throw new Error(`Asset index not found for coin: ${coin}`);
+        return this.failure(
+          `Asset index not found for coin: ${coin}`,
+          'ASSET_NOT_FOUND',
+          false,
+        );
       }
 
       const wallet = new Wallet(this.privateKey!);
@@ -191,7 +216,9 @@ export class HyperliquidClient {
         vaultAddress: null,
       };
 
-      this.logger.log(`Sending order to Hyperliquid: ${JSON.stringify(payload)}`);
+      this.logger.log(
+        `Sending order to Hyperliquid: coin=${coin}, size=${size}, side=${isShort ? 'short' : 'long'}, hasLimitPrice=${Boolean(limitPrice)}, nonce=${nonce}`,
+      );
 
       const response = await firstValueFrom(
         this.httpService.post(`${this.baseUrl}/exchange`, payload)
@@ -201,10 +228,7 @@ export class HyperliquidClient {
       if (result.status === 'ok') {
         const status = result.response?.data?.statuses?.[0];
         if (status?.error) {
-             return {
-                 success: false,
-                 error: `Order error: ${status.error}`,
-             };
+             return this.failure(`Order error: ${status.error}`, 'API_ERROR', false);
         }
         return {
           success: true,
@@ -215,17 +239,15 @@ export class HyperliquidClient {
           },
         };
       } else {
-        return {
-          success: false,
-          error: result.response || 'Unknown error',
-        };
+        return this.failure(result.response || 'Unknown error', 'API_ERROR', true);
       }
     } catch (error) {
       this.logger.error(`Real order placement failed: ${error.message}`);
-      return {
-        success: false,
-        error: `Failed to place real order: ${error.message}`,
-      };
+      return this.failure(
+        `Failed to place real order: ${error.message}`,
+        'NETWORK_ERROR',
+        true,
+      );
     }
   }
 
@@ -362,6 +384,8 @@ export class HyperliquidClient {
     success: boolean;
     data?: HyperliquidPosition;
     error?: string;
+    code?: HyperliquidErrorCode;
+    retryable?: boolean;
   }> {
     try {
       const response = await firstValueFrom(
@@ -379,10 +403,7 @@ export class HyperliquidClient {
       );
 
       if (!position) {
-        return {
-          success: false,
-          error: `No position found for coin: ${coin}`,
-        };
+        return this.failure(`No position found for coin: ${coin}`, 'NO_POSITION', false);
       }
 
       return {
@@ -390,10 +411,11 @@ export class HyperliquidClient {
         data: position as HyperliquidPosition,
       };
     } catch (error) {
-      return {
-        success: false,
-        error: `Failed to get position: ${error.message}`,
-      };
+      return this.failure(
+        `Failed to get position: ${error.message}`,
+        'NETWORK_ERROR',
+        true,
+      );
     }
   }
 
@@ -405,15 +427,14 @@ export class HyperliquidClient {
     success: boolean;
     data?: { orderId: string; txHash?: string };
     error?: string;
+    code?: HyperliquidErrorCode;
+    retryable?: boolean;
   }> {
     try {
       // Get current position to determine close size
       const positionResult = await this.getPosition(coin);
       if (!positionResult.success || !positionResult.data) {
-        return {
-          success: false,
-          error: 'No open position to close',
-        };
+        return this.failure('No open position to close', 'NO_POSITION', false);
       }
 
       const position = positionResult.data;
@@ -426,10 +447,11 @@ export class HyperliquidClient {
         !isShort,
       );
     } catch (error) {
-      return {
-        success: false,
-        error: `Failed to close position: ${error.message}`,
-      };
+      return this.failure(
+        `Failed to close position: ${error.message}`,
+        'UNKNOWN_ERROR',
+        false,
+      );
     }
   }
 
@@ -445,6 +467,8 @@ export class HyperliquidClient {
       totalSzi: string;
     };
     error?: string;
+    code?: HyperliquidErrorCode;
+    retryable?: boolean;
   }> {
     try {
       const response = await firstValueFrom(
@@ -467,10 +491,11 @@ export class HyperliquidClient {
         },
       };
     } catch (error) {
-      return {
-        success: false,
-        error: `Failed to get account info: ${error.message}`,
-      };
+      return this.failure(
+        `Failed to get account info: ${error.message}`,
+        'NETWORK_ERROR',
+        true,
+      );
     }
   }
 }

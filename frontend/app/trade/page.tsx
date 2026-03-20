@@ -11,6 +11,7 @@ import { useWithdrawals } from '../hooks/useWithdrawals';
 import { useOrders } from '../hooks/useOrders';
 import { useAuthToken } from '../hooks/useAuthToken';
 import { apiFetch, apiFetchJson } from '../lib/api';
+import { formatAmountFromUnits, parseAmountToUnits, tryParsePositiveAmount } from '../lib/units';
 import { KlineChart } from './components/KlineChart';
 import { TimeframeSelector } from './components/TimeframeSelector';
 
@@ -99,7 +100,7 @@ export default function TradePage() {
           type: 'market',
           side: orderData.side === 'Long' ? 'long' : 'short',
           symbol: orderData.symbol,
-          size: (BigInt(Math.floor(Number(orderData.size) * 1e18))).toString(),
+          size: parseAmountToUnits(orderData.size, 18).toString(),
           leverage: orderData.leverage.toString(),
         }),
       });
@@ -124,7 +125,7 @@ export default function TradePage() {
   });
 
   const handleOrder = (side: 'Long' | 'Short') => {
-    if (!size || Number(size) <= 0) {
+    if (!tryParsePositiveAmount(size, 18)) {
       toast.error('Please enter a valid size');
       return;
     }
@@ -236,7 +237,9 @@ function TradeSection({ priceData, priceLoading, balanceData, faucetMutation, si
             <div className="text-right">
               <div className="text-xs text-[var(--text-secondary)]">Available</div>
               <div className="text-sm font-mono font-medium text-[var(--text-primary)]">
-                {balanceData?.success ? (Number(balanceData.data.availableBalance) / 1e6).toFixed(2) : '0.00'} USDC
+                {balanceData?.success
+                  ? formatAmountFromUnits(balanceData.data.availableBalance, 6)
+                  : '0.00'} USDC
               </div>
             </div>
             <button
@@ -646,16 +649,16 @@ function OrdersTab({ userAddress }: { userAddress: string; }) {
                     {order.type.toUpperCase()}
                   </td>
                   <td className="py-3 text-sm text-[var(--text-primary)] font-mono">
-                    {(Number(order.size) / 1e18).toFixed(2)}
+                    {formatAmountFromUnits(order.size, 18)}
                   </td>
                   <td className="py-3 text-sm text-[var(--text-secondary)] font-mono">
                     {order.leverage ? `${order.leverage}x` : '1x'}
                   </td>
                   <td className="py-3 text-sm text-[var(--text-primary)] font-mono">
                     {order.fillPrice
-                      ? `$${(Number(order.fillPrice) / 1e18).toFixed(2)}`
+                      ? `$${formatAmountFromUnits(order.fillPrice, 18)}`
                       : order.limitPrice
-                        ? `$${(Number(order.limitPrice) / 1e18).toFixed(2)}`
+                        ? `$${formatAmountFromUnits(order.limitPrice, 18)}`
                         : '-'}
                   </td>
                   <td className="py-3">

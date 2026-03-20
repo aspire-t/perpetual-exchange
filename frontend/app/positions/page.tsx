@@ -5,6 +5,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { Navigation } from '../components/Navigation';
 import { apiFetch, apiFetchJson } from '../lib/api';
 import { useAuthToken } from '../hooks/useAuthToken';
+import { formatAmountFromUnits } from '../lib/units';
 
 interface Position {
   id: string;
@@ -111,14 +112,14 @@ export default function PositionsPage() {
                   <div>
                     <p className="text-xs text-[var(--text-muted)] mb-1">Size</p>
                     <p className="text-base font-mono font-semibold text-[var(--text-primary)]">
-                      ${(Number(BigInt(position.size)) / 1e18).toFixed(2)}
+                      ${formatAmountFromUnits(position.size, 18)}
                     </p>
                   </div>
 
                   <div>
                     <p className="text-xs text-[var(--text-muted)] mb-1">Entry Price</p>
                     <p className="text-base font-mono font-semibold text-[var(--text-primary)]">
-                      ${(Number(BigInt(position.entryPrice)) / 1e18).toFixed(2)}
+                      ${formatAmountFromUnits(position.entryPrice, 18)}
                     </p>
                   </div>
 

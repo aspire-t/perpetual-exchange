@@ -5,6 +5,7 @@ import { PositionService } from './position.service';
 import { Position } from '../entities/Position.entity';
 import { User } from '../entities/User.entity';
 import { PriceService } from '../price/price.service';
+import { ConfigService } from '@nestjs/config';
 
 describe('PositionService', () => {
   let positionService: PositionService;
@@ -30,6 +31,13 @@ describe('PositionService', () => {
     getPrice: jest.fn(),
   };
 
+  const mockConfigService = {
+    get: jest.fn((key: string, defaultValue?: string) => {
+      if (key === 'POSITION_PRICE_SYMBOL') return 'BTC';
+      return defaultValue;
+    }),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -45,6 +53,10 @@ describe('PositionService', () => {
         {
           provide: PriceService,
           useValue: mockPriceService,
+        },
+        {
+          provide: ConfigService,
+          useValue: mockConfigService,
         },
       ],
     }).compile();
@@ -219,7 +231,7 @@ describe('PositionService', () => {
         .mockResolvedValue(mockOpenPosition);
       jest.spyOn(priceService, 'getPrice').mockResolvedValue({
         success: true,
-        data: { coin: 'ETH', price: exitPrice.toString() },
+        data: { coin: 'BTC', price: '0.0000000021' },
       });
       jest.spyOn(positionRepository, 'save').mockResolvedValue({
         ...mockOpenPosition,
@@ -234,6 +246,7 @@ describe('PositionService', () => {
       expect(result.success).toBe(true);
       expect(result.data?.isOpen).toBe(false);
       expect(result.data?.pnl).toBe('100000000');
+      expect(priceService.getPrice).toHaveBeenCalledWith('BTC');
     });
 
     it('should close a position with short side', async () => {
@@ -254,7 +267,7 @@ describe('PositionService', () => {
         .mockResolvedValue(shortPosition);
       jest.spyOn(priceService, 'getPrice').mockResolvedValue({
         success: true,
-        data: { coin: 'ETH', price: exitPrice.toString() },
+        data: { coin: 'BTC', price: '0.0000000019' },
       });
       jest.spyOn(positionRepository, 'save').mockResolvedValue({
         ...shortPosition,

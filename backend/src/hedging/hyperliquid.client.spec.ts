@@ -247,6 +247,8 @@ describe('HyperliquidClient', () => {
 
         expect(result.success).toBe(false);
         expect(result.error).toContain('credentials');
+        expect(result.code).toBe('CONFIG_ERROR');
+        expect(result.retryable).toBe(false);
       });
     });
   });
@@ -449,6 +451,8 @@ describe('HyperliquidClient', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Failed to get account info');
+      expect(result.code).toBe('NETWORK_ERROR');
+      expect(result.retryable).toBe(true);
     });
   });
 });

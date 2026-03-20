@@ -241,6 +241,7 @@ describe('RiskEngineService', () => {
       id: 'position-1',
       size: '1000000000000000000',
       entryPrice: '2000000000',
+      leverage: '10',
       isLong: true,
       isOpen: true,
       liquidationPrice: '1600000000',
@@ -269,7 +270,7 @@ describe('RiskEngineService', () => {
       );
 
       expect(result.shouldLiquidate).toBe(true);
-      expect(parseFloat(result.healthFactor)).toBeLessThan(0.025);
+      expect(parseFloat(result.healthFactor)).toBeLessThan(0.8);
     });
 
     it('should calculate unrealized PnL correctly', async () => {
@@ -302,6 +303,7 @@ describe('RiskEngineService', () => {
     const mockPosition = {
       size: '1000000000000000000',
       entryPrice: '2000000000',
+      leverage: '10',
     } as Position;
 
     it('should return health factor as string', () => {
@@ -350,6 +352,7 @@ describe('RiskEngineService', () => {
     const mockPosition = {
       size: '1000000000000000000',
       entryPrice: '2000000000',
+      leverage: '10',
       isLong: true,
     } as Position;
 
@@ -497,7 +500,7 @@ describe('RiskEngineService', () => {
       // Mock checkLiquidation to return low health factor
       jest.spyOn(riskEngineService, 'checkLiquidation').mockResolvedValue({
         shouldLiquidate: false,
-        healthFactor: '1.2',
+        healthFactor: '0.9',
         data: {
           unrealizedPnl: '-50000000000000000',
           distanceToLiquidation: '100000000',

@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import {
   Order,
   OrderType,
@@ -38,7 +38,47 @@ export class OrderService {
     private dataSource: DataSource,
   ) {}
 
-  private async persistExecutionInTransaction(params: {
+  private maskAddress(address: string): string {
+    if (!address || address.length < 10) {
+      return 'unknown';
+    }
+    return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  }
+
+  private async releaseCancelledOrderFunds(order: Order): Promise<void> {
+    if (!order.symbol || !order.leverage) {
+      return;
+    }
+    const notionalSize = BigInt(order.size);
+    const leverage = BigInt(order.leverage);
+    if (notionalSize <= BigInt(0) || leverage <= BigInt(0)) {
+      return;
+    }
+
+    const referencePrice =
+      order.limitPrice || order.fillPrice || (await this.getCurrentPriceWei(order.symbol));
+    const price = BigInt(referencePrice);
+    const marginRequired = notionalSize / leverage;
+    const marginRequiredUSDC = scaleInternalToQuoteRoundedUp(marginRequired);
+    const notionalValue = (notionalSize * price) / BigInt(1e18);
+    const tradingFee = notionalValue / BigInt(1000);
+    const tradingFeeUSDC = scaleInternalToQuoteRoundedUp(tradingFee);
+
+    await this.balanceService.releaseMargin(order.userId, marginRequiredUSDC);
+    await this.balanceService.refundFee(order.userId, tradingFeeUSDC);
+  }
+
+  private async getCurrentPriceWei(symbol: string): Promise<string> {
+    const priceResult = await this.priceService.getPrice(symbol);
+    if (!priceResult.success || !priceResult.data) {
+      throw new Error('Failed to get current price');
+    }
+    return ethers.parseUnits(priceResult.data.price, 18).toString();
+  }
+
+  private async persistExecutionInTransaction(
+    manager: EntityManager,
+    params: {
     userId: string;
     side: OrderSide;
     symbol: string;
@@ -47,74 +87,73 @@ export class OrderService {
     exactCurrentPrice: bigint;
     isShortHedge: boolean;
     hedgeOrderId: string;
-  }) {
-    return this.dataSource.transaction(async (manager) => {
-      const existingPositions = await manager.find(Position, {
-        where: {
-          userId: params.userId,
-          isOpen: true,
-          isLong: params.side === OrderSide.LONG,
-        },
-      });
+  },
+  ) {
+    const existingPositions = await manager.find(Position, {
+      where: {
+        userId: params.userId,
+        isOpen: true,
+        isLong: params.side === OrderSide.LONG,
+      },
+    });
 
-      let position: Position;
-      let positionEntryPrice: string;
+    let position: Position;
+    let positionEntryPrice: string;
 
-      if (existingPositions.length > 0) {
-        position = existingPositions[0];
-        const oldSize = BigInt(position.size);
-        const oldEntryPrice = BigInt(position.entryPrice);
-        const newSize = oldSize + params.size;
-        const weightedTotal =
-          oldSize * oldEntryPrice + params.size * params.exactCurrentPrice;
-        const averageEntryPrice = weightedTotal / newSize;
+    if (existingPositions.length > 0) {
+      position = existingPositions[0];
+      const oldSize = BigInt(position.size);
+      const oldEntryPrice = BigInt(position.entryPrice);
+      const newSize = oldSize + params.size;
+      const weightedTotal =
+        oldSize * oldEntryPrice + params.size * params.exactCurrentPrice;
+      const averageEntryPrice = weightedTotal / newSize;
 
-        position.size = newSize.toString();
-        position.entryPrice = averageEntryPrice.toString();
-        await manager.save(Position, position);
-        positionEntryPrice = averageEntryPrice.toString();
-      } else {
-        position = manager.create(Position, {
-          userId: params.userId,
-          size: params.size.toString(),
-          entryPrice: params.exactCurrentPrice.toString(),
-          isLong: params.side === OrderSide.LONG,
-          isOpen: true,
-          leverage: params.leverage.toString(),
-          fundingPaid: '0',
-        });
-        await manager.save(Position, position);
-        positionEntryPrice = position.entryPrice;
-      }
-
-      const hedge = manager.create(Hedge, {
-        positionId: position.id,
+      position.size = newSize.toString();
+      position.entryPrice = averageEntryPrice.toString();
+      await manager.save(Position, position);
+      positionEntryPrice = averageEntryPrice.toString();
+    } else {
+      position = manager.create(Position, {
+        userId: params.userId,
         size: params.size.toString(),
         entryPrice: params.exactCurrentPrice.toString(),
-        isShort: params.isShortHedge,
-        status: HedgeStatus.OPEN,
-        hyperliquidOrderId: params.hedgeOrderId,
-      });
-      await manager.save(Hedge, hedge);
-
-      const order = manager.create(Order, {
-        userId: params.userId,
-        type: OrderType.MARKET,
-        side: params.side,
-        symbol: params.symbol,
-        size: params.size.toString(),
+        isLong: params.side === OrderSide.LONG,
+        isOpen: true,
         leverage: params.leverage.toString(),
-        fillPrice: params.exactCurrentPrice.toString(),
-        status: OrderStatus.FILLED,
+        fundingPaid: '0',
       });
-      await manager.save(Order, order);
+      await manager.save(Position, position);
+      positionEntryPrice = position.entryPrice;
+    }
 
-      return {
-        orderId: order.id,
-        positionId: position.id,
-        positionEntryPrice,
-      };
+    const hedge = manager.create(Hedge, {
+      positionId: position.id,
+      size: params.size.toString(),
+      entryPrice: params.exactCurrentPrice.toString(),
+      isShort: params.isShortHedge,
+      status: HedgeStatus.OPEN,
+      hyperliquidOrderId: params.hedgeOrderId,
     });
+    await manager.save(Hedge, hedge);
+
+    const order = manager.create(Order, {
+      userId: params.userId,
+      type: OrderType.MARKET,
+      side: params.side,
+      symbol: params.symbol,
+      size: params.size.toString(),
+      leverage: params.leverage.toString(),
+      fillPrice: params.exactCurrentPrice.toString(),
+      status: OrderStatus.FILLED,
+    });
+    await manager.save(Order, order);
+
+    return {
+      orderId: order.id,
+      positionId: position.id,
+      positionEntryPrice,
+    };
   }
 
   async createOrder(
@@ -278,6 +317,7 @@ export class OrderService {
 
   async cancelOrder(
     orderId: string,
+    userAddress: string,
   ): Promise<{ success: boolean; data?: any; error?: string }> {
     const order = await this.orderRepository.findOne({
       where: { id: orderId },
@@ -285,6 +325,15 @@ export class OrderService {
 
     if (!order) {
       return { success: false, error: 'Order not found' };
+    }
+
+    const normalizedAddress = userAddress.toLowerCase();
+    const user = await this.userRepository.findOne({
+      where: { address: normalizedAddress },
+    });
+
+    if (!user || user.id !== order.userId) {
+      return { success: false, error: 'Order does not belong to authenticated user' };
     }
 
     if (order.status === OrderStatus.FILLED) {
@@ -296,6 +345,17 @@ export class OrderService {
 
     if (order.status === OrderStatus.CANCELLED) {
       return { success: false, error: 'Order is already cancelled' };
+    }
+
+    if (order.status === OrderStatus.PENDING) {
+      try {
+        await this.releaseCancelledOrderFunds(order);
+      } catch (error) {
+        return {
+          success: false,
+          error: `Failed to release cancelled order funds: ${error.message}`,
+        };
+      }
     }
 
     order.status = OrderStatus.CANCELLED;
@@ -492,15 +552,6 @@ export class OrderService {
     // marginRequiredUSDC = ceil(marginRequired / 1e12)
     const marginRequiredUSDC = scaleInternalToQuoteRoundedUp(marginRequired);
 
-    // Lock margin
-    const lockResult = await this.balanceService.lockMargin(
-      user.id,
-      marginRequiredUSDC,
-    );
-    if (!lockResult.success) {
-      return { success: false, error: lockResult.error };
-    }
-
     // Calculate trading fee: 0.1% based on notional value
     // Notional value = size * currentPrice / 1e18
     const notionalValue = (size * currentPrice) / BigInt(1e18);
@@ -508,12 +559,6 @@ export class OrderService {
 
     // Convert fee to USDC decimals (6)
     const tradingFeeUSDC = scaleInternalToQuoteRoundedUp(tradingFee);
-
-    const feeResult = await this.balanceService.deductFee(user.id, tradingFeeUSDC);
-    if (!feeResult.success) {
-      await this.balanceService.releaseMargin(user.id, marginRequiredUSDC);
-      return { success: false, error: feeResult.error };
-    }
 
     const isShortHedge = side === OrderSide.LONG;
     const saveRejectedOrder = async () => {
@@ -528,32 +573,12 @@ export class OrderService {
       await this.orderRepository.save(rejectedOrder);
       return rejectedOrder;
     };
-    const refundFunds = async () => {
-      await this.balanceService.releaseMargin(user.id, marginRequiredUSDC);
-      await this.balanceService.refundFee(user.id, tradingFeeUSDC);
-    };
     const compensateHedge = async () => {
       return this.hedgingService.executeHedgeOrder(symbol, size, !isShortHedge);
     };
-
-    const hedgeResult = await this.hedgingService.executeHedgeOrder(
-      symbol,
-      size,
-      isShortHedge,
-    );
-
-    if (!hedgeResult.success || !hedgeResult.data) {
-      await refundFunds();
-      await saveRejectedOrder();
-      return { success: false, error: `Hedge execution failed: ${hedgeResult.error}` };
-    }
-
-    let exactCurrentPrice: bigint;
-    try {
-      exactCurrentPrice = ethers.parseUnits(hedgeResult.data.fillPrice, 18);
-    } catch (e) {
-      exactCurrentPrice = currentPrice;
-    }
+    const hedgeLifecycle: { succeeded: boolean; error?: string } = {
+      succeeded: false,
+    };
 
     let persistedResult: {
       orderId: string;
@@ -561,35 +586,86 @@ export class OrderService {
       positionEntryPrice: string;
     };
     try {
-      persistedResult = await this.persistExecutionInTransaction({
-        userId: user.id,
-        side,
-        symbol,
-        size,
-        leverage,
-        exactCurrentPrice,
-        isShortHedge,
-        hedgeOrderId: hedgeResult.data.orderId,
+      persistedResult = await this.dataSource.transaction(async (manager) => {
+        const txUser = await manager.findOne(User, { where: { id: user.id } });
+        if (!txUser) {
+          throw new Error('User not found');
+        }
+
+        const currentBalance = BigInt(txUser.balance);
+        if (currentBalance < marginRequiredUSDC) {
+          throw new Error(
+            `Insufficient balance: has ${currentBalance.toString()}, needs ${marginRequiredUSDC.toString()}`,
+          );
+        }
+        const remainingAfterMargin = currentBalance - marginRequiredUSDC;
+        if (remainingAfterMargin < tradingFeeUSDC) {
+          throw new Error(
+            `Insufficient balance for fee: has ${remainingAfterMargin.toString()}, needs ${tradingFeeUSDC.toString()}`,
+          );
+        }
+
+        txUser.balance = (remainingAfterMargin - tradingFeeUSDC).toString();
+        await manager.save(User, txUser);
+
+        const hedgeResult = await this.hedgingService.executeHedgeOrder(
+          symbol,
+          size,
+          isShortHedge,
+        );
+        if (!hedgeResult.success || !hedgeResult.data) {
+          hedgeLifecycle.error = hedgeResult.error || 'Unknown error';
+          throw new Error(`Hedge execution failed: ${hedgeLifecycle.error}`);
+        }
+        hedgeLifecycle.succeeded = true;
+
+        let exactCurrentPrice: bigint;
+        try {
+          exactCurrentPrice = ethers.parseUnits(hedgeResult.data.fillPrice, 18);
+        } catch (e) {
+          exactCurrentPrice = currentPrice;
+        }
+
+        return this.persistExecutionInTransaction(manager, {
+          userId: user.id,
+          side,
+          symbol,
+          size,
+          leverage,
+          exactCurrentPrice,
+          isShortHedge,
+          hedgeOrderId: hedgeResult.data.orderId,
+        });
       });
     } catch (error) {
-      const compensateResult = await compensateHedge();
-      await refundFunds();
+      const err = error as Error;
       await saveRejectedOrder();
-      this.logger.error(`Failed to persist local execution after hedge: ${error.message}`);
-      if (!compensateResult.success) {
+      if (err.message.startsWith('Hedge execution failed:')) {
+        return { success: false, error: err.message };
+      }
+
+      if (hedgeLifecycle.succeeded) {
+        const compensateResult = await compensateHedge();
+        this.logger.error(
+          `Failed to persist local execution after hedge: ${err.message}`,
+        );
+        if (!compensateResult.success) {
+          return {
+            success: false,
+            error: `Failed to persist local execution: ${err.message}; hedge compensation failed: ${compensateResult.error}`,
+          };
+        }
         return {
           success: false,
-          error: `Failed to persist local execution: ${error.message}; hedge compensation failed: ${compensateResult.error}`,
+          error: `Failed to persist local execution: ${err.message}`,
         };
       }
-      return {
-        success: false,
-        error: `Failed to persist local execution: ${error.message}`,
-      };
+
+      return { success: false, error: err.message };
     }
 
     this.logger.log(
-      `Order executed: user=${userAddress}, side=${side}, size=${size.toString()}, ` +
+      `Order executed: user=${this.maskAddress(userAddress)}, side=${side}, size=${size.toString()}, ` +
         `leverage=${leverage.toString()}, positionId=${persistedResult.positionId}`,
     );
 

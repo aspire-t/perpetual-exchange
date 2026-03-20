@@ -7,6 +7,7 @@ import { Navigation } from '../components/Navigation';
 import toast from 'react-hot-toast';
 import { useAuthToken } from '../hooks/useAuthToken';
 import { apiFetch, apiFetchJson } from '../lib/api';
+import { formatAmountFromUnits, parseAmountToUnits, tryParsePositiveAmount } from '../lib/units';
 
 export default function WithdrawPage() {
   const { isConnected, address } = useAccount();
@@ -35,7 +36,7 @@ export default function WithdrawPage() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          amount: BigInt(Math.floor(Number(withdrawAmount) * 1e18)).toString(),
+          amount: parseAmountToUnits(withdrawAmount, 6).toString(),
         }),
       });
       const data = await response.json();
@@ -56,7 +57,7 @@ export default function WithdrawPage() {
   });
 
   const handleWithdraw = () => {
-    if (!amount || Number(amount) <= 0) {
+    if (!tryParsePositiveAmount(amount, 6)) {
       toast.error('Please enter a valid amount');
       return;
     }
@@ -64,7 +65,7 @@ export default function WithdrawPage() {
   };
 
   const availableBalance = balanceData?.success
-    ? (Number(balanceData.data.balance) / 1e18).toFixed(2)
+    ? formatAmountFromUnits(balanceData.data.balance, 6)
     : '0.00';
 
   if (!isConnected) {

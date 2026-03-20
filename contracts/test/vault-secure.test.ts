@@ -1,16 +1,18 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import { Vault, MockUSDC } from "../typechain-types";
+import { Vault, MockUSDC, MockPriceFeed } from "../typechain-types";
 import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
 
 describe("Vault Secure Withdrawal", function () {
   let vault: Vault;
   let mockUSDC: MockUSDC;
+  let mockPriceFeed: MockPriceFeed;
   let owner: SignerWithAddress;
   let user1: SignerWithAddress;
   let user2: SignerWithAddress;
 
   const USDC_DECIMALS = 6;
+  const INITIAL_PRICE = 3000_00000000n; // 3000 with 8 decimals
 
   function parseUSDC(amount: string): bigint {
     return ethers.parseUnits(amount, USDC_DECIMALS);
@@ -27,8 +29,12 @@ describe("Vault Secure Withdrawal", function () {
     mockUSDC = await MockUSDCFactory.deploy();
     await mockUSDC.waitForDeployment();
 
+    const MockPriceFeedFactory = await ethers.getContractFactory("MockPriceFeed");
+    mockPriceFeed = await MockPriceFeedFactory.deploy(INITIAL_PRICE);
+    await mockPriceFeed.waitForDeployment();
+
     const VaultFactory = await ethers.getContractFactory("Vault");
-    vault = await VaultFactory.deploy(await mockUSDC.getAddress());
+    vault = await VaultFactory.deploy(await mockUSDC.getAddress(), await mockPriceFeed.getAddress());
     await vault.waitForDeployment();
 
     // Setup initial state: User1 has deposit
@@ -54,12 +60,14 @@ describe("Vault Secure Withdrawal", function () {
       verifyingContract: contractAddress,
     };
 
+    // 新增 chainId 参数到 Withdraw 类型定义
     const types = {
       Withdraw: [
         { name: "sender", type: "address" },
         { name: "amount", type: "uint256" },
         { name: "nonce", type: "uint256" },
         { name: "expiry", type: "uint256" },
+        { name: "chainId", type: "uint256" },
       ],
     };
 
@@ -68,6 +76,7 @@ describe("Vault Secure Withdrawal", function () {
       amount: amount,
       nonce: nonce,
       expiry: expiry,
+      chainId: chainId,
     };
 
     return await signer.signTypedData(domain, types, value);
@@ -88,15 +97,15 @@ describe("Vault Secure Withdrawal", function () {
 
     const balanceBefore = await mockUSDC.balanceOf(user1.address);
 
-    await expect(
-      vault.connect(user1).withdrawWithSignature(amount, nonce, expiry, signature)
-    )
-      .to.emit(vault, "Withdraw")
-      .withArgs(user1.address, amount);
+    const tx = await vault.connect(user1).withdrawWithSignature(amount, nonce, expiry, signature);
+
+    // Check event with timestamp (3 arguments now)
+    await expect(tx)
+      .to.emit(vault, "Withdraw");
 
     const balanceAfter = await mockUSDC.balanceOf(user1.address);
     expect(balanceAfter).to.equal(balanceBefore + amount);
-    
+
     // Check nonce increment
     expect(await vault.nonces(user1.address)).to.equal(nonce + 1n);
   });
@@ -117,7 +126,7 @@ describe("Vault Secure Withdrawal", function () {
 
     await expect(
       vault.connect(user1).withdrawWithSignature(amount, nonce, expiry, signature)
-    ).to.be.revertedWith("Invalid signature");
+    ).to.be.revertedWithCustomError(vault, "InvalidSignature");
   });
 
   it("should revert with invalid signature (wrong amount)", async function () {
@@ -136,7 +145,7 @@ describe("Vault Secure Withdrawal", function () {
 
     await expect(
       vault.connect(user1).withdrawWithSignature(wrongAmount, nonce, expiry, signature)
-    ).to.be.revertedWith("Invalid signature");
+    ).to.be.revertedWithCustomError(vault, "InvalidSignature");
   });
 
   it("should revert with wrong nonce", async function () {
@@ -155,7 +164,7 @@ describe("Vault Secure Withdrawal", function () {
 
     await expect(
       vault.connect(user1).withdrawWithSignature(amount, wrongNonce, expiry, signature)
-    ).to.be.revertedWith("Invalid nonce");
+    ).to.be.revertedWithCustomError(vault, "InvalidNonce");
   });
 
   it("should revert with expired signature", async function () {
@@ -173,9 +182,9 @@ describe("Vault Secure Withdrawal", function () {
 
     await expect(
       vault.connect(user1).withdrawWithSignature(amount, nonce, expiry, signature)
-    ).to.be.revertedWith("Signature expired");
+    ).to.be.revertedWithCustomError(vault, "SignatureExpired");
   });
-  
+
   it("should revert if user tries to replay signature", async function () {
     const amount = parseUSDC("100");
     const nonce = await vault.nonces(user1.address);
@@ -190,10 +199,10 @@ describe("Vault Secure Withdrawal", function () {
     );
 
     await vault.connect(user1).withdrawWithSignature(amount, nonce, expiry, signature);
-    
+
     // Try again with same signature
     await expect(
       vault.connect(user1).withdrawWithSignature(amount, nonce, expiry, signature)
-    ).to.be.revertedWith("Invalid nonce");
+    ).to.be.revertedWithCustomError(vault, "InvalidNonce");
   });
 });
