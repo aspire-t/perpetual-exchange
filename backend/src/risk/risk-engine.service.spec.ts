@@ -5,6 +5,7 @@ import { RiskEngineService } from './risk-engine.service';
 import { Position } from '../entities/Position.entity';
 import { User } from '../entities/User.entity';
 import { PriceService } from '../price/price.service';
+import { ConfigService } from '@nestjs/config';
 
 describe('RiskEngineService', () => {
   let riskEngineService: RiskEngineService;
@@ -26,6 +27,13 @@ describe('RiskEngineService', () => {
     getPrice: jest.fn(),
   };
 
+  const mockConfigService = {
+    get: jest.fn((key: string, defaultValue?: string) => {
+      if (key === 'RISK_PRICE_SYMBOL') return 'BTC';
+      return defaultValue;
+    }),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -41,6 +49,10 @@ describe('RiskEngineService', () => {
         {
           provide: PriceService,
           useValue: mockPriceService,
+        },
+        {
+          provide: ConfigService,
+          useValue: mockConfigService,
         },
       ],
     }).compile();
@@ -60,7 +72,7 @@ describe('RiskEngineService', () => {
   describe('checkNewPositionRisk', () => {
     const mockUser = {
       address: '0x1234567890123456789012345678901234567890',
-      balance: '10000000000000000000', // 10 tokens
+      balance: '10000000', // 10 quote units with 6 decimals
     } as User;
 
     it('should allow position when leverage is within limits and user has sufficient balance', async () => {
@@ -88,7 +100,7 @@ describe('RiskEngineService', () => {
 
       expect(result.success).toBe(true);
       expect(result.allowed).toBe(false);
-      expect(result.reason).toContain('Lverage exceeds maximum allowed');
+      expect(result.reason).toContain('Leverage exceeds maximum allowed');
     });
 
     it('should reject position when leverage is less than 1x', async () => {
@@ -120,7 +132,7 @@ describe('RiskEngineService', () => {
     });
 
     it('should reject position when user has insufficient balance', async () => {
-      const poorUser = { ...mockUser, balance: '100000000000000000' } as User; // 0.1 tokens
+      const poorUser = { ...mockUser, balance: '100000' } as User; // 0.1 quote units with 6 decimals
       jest.spyOn(userRepository, 'findOne').mockResolvedValue(poorUser);
 
       const result = await riskEngineService.checkNewPositionRisk(
@@ -496,6 +508,7 @@ describe('RiskEngineService', () => {
 
       expect(result.success).toBe(true);
       expect(result.data?.positionsAtRisk).toBeDefined();
+      expect(priceService.getPrice).toHaveBeenCalledWith('BTC');
     });
 
     it('should return empty array when no positions are at risk', async () => {

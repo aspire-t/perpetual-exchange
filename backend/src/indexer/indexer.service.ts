@@ -22,6 +22,16 @@ export class IndexerService {
     private dataSource: DataSource,
   ) {}
 
+  async getResumeBlock(startBlock: number): Promise<number> {
+    const latestProcessedEvent = await this.processedEventRepository.findOne({
+      order: { blockNumber: 'DESC' },
+    });
+    if (!latestProcessedEvent) {
+      return startBlock;
+    }
+    return Math.max(startBlock, latestProcessedEvent.blockNumber + 1);
+  }
+
   async processDepositEvent(
     userAddress: string,
     amount: bigint,
@@ -172,8 +182,8 @@ export class IndexerService {
         this.logger.error(
           `User ${user.address} locked balance ${lockedBalance} is less than withdrawal amount ${amount}`,
         );
+        throw new Error('Insufficient locked balance for withdrawal event');
       }
-      // Deduct anyway as the event happened on chain
       user.locked = (lockedBalance - amount).toString();
       await queryRunner.manager.save(user);
 

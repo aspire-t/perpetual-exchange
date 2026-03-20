@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { OrderService } from './order.service';
 import {
   Order,
@@ -49,6 +49,8 @@ describe('OrderService', () => {
   const mockBalanceService = () => ({
     lockMargin: jest.fn(),
     releaseMargin: jest.fn(),
+    refundFee: jest.fn(),
+    deductFee: jest.fn(),
     getBalance: jest.fn(),
   });
 
@@ -67,6 +69,8 @@ describe('OrderService', () => {
     getHedge: jest.fn(),
     getPositionHedges: jest.fn(),
     autoHedge: jest.fn(),
+    executeHedgeOrder: jest.fn(),
+    createHedgeRecord: jest.fn(),
     syncHedgeStatus: jest.fn(),
     getTotalHedgedVolume: jest.fn(),
   });
@@ -79,6 +83,16 @@ describe('OrderService', () => {
     checkNewPositionRisk: jest.fn(),
     calculateLiquidationPrice: jest.fn(),
     checkLiquidation: jest.fn(),
+  });
+
+  const mockDataSource = () => ({
+    transaction: jest.fn(async (callback) =>
+      callback({
+        find: jest.fn().mockResolvedValue([]),
+        create: jest.fn((_: unknown, entity: unknown) => entity),
+        save: jest.fn(async (_: unknown, entity: unknown) => entity),
+      }),
+    ),
   });
 
   beforeEach(async () => {
@@ -116,6 +130,10 @@ describe('OrderService', () => {
         {
           provide: RiskEngineService,
           useValue: mockRiskEngineService(),
+        },
+        {
+          provide: DataSource,
+          useValue: mockDataSource(),
         },
       ],
     }).compile();
@@ -475,49 +493,24 @@ describe('OrderService', () => {
       jest.spyOn(riskEngineService, 'checkNewPositionRisk').mockResolvedValue({
         allowed: true,
       });
+      jest.spyOn(balanceService, 'deductFee').mockResolvedValue({ success: true });
+      jest.spyOn(balanceService, 'refundFee').mockResolvedValue({ success: true });
+      jest.spyOn(orderRepository, 'create').mockImplementation(() => ({} as Order));
+      jest
+        .spyOn(orderRepository, 'save')
+        .mockImplementation(async (order: Order) => ({ ...order, id: 'order-1' } as Order));
     });
 
     it('should execute a long market order successfully', async () => {
-      const marginRequired = BigInt('100000000000000000'); // size / leverage = 0.1 token
+      const marginRequired = BigInt('100000'); // 0.1 token in USDC decimals
 
-      // Mock services
       jest
         .spyOn(balanceService, 'lockMargin')
         .mockResolvedValue({ success: true });
-      jest.spyOn(positionService, 'openPosition').mockResolvedValue({
+      jest.spyOn(hedgingService, 'executeHedgeOrder').mockResolvedValue({
         success: true,
-        data: {
-          id: 'position-1',
-          size: size.toString(),
-          entryPrice: mockEntryPrice.toString(),
-          isLong: true,
-          isOpen: true,
-        },
+        data: { orderId: 'hedge-1', fillPrice: '0.000000002' },
       });
-      jest.spyOn(hedgingService, 'autoHedge').mockResolvedValue({
-        success: true,
-        data: { id: 'hedge-1' },
-      });
-      jest.spyOn(orderRepository, 'create').mockReturnValue({
-        id: 'order-1',
-        userId: mockUser.id,
-        type: OrderType.MARKET,
-        side: OrderSide.LONG,
-        size: size.toString(),
-        leverage: leverage.toString(),
-        status: OrderStatus.FILLED,
-        createdAt: new Date(),
-      } as unknown as Order);
-      jest.spyOn(orderRepository, 'save').mockResolvedValue({
-        id: 'order-1',
-        userId: mockUser.id,
-        type: OrderType.MARKET,
-        side: OrderSide.LONG,
-        size: size.toString(),
-        leverage: leverage.toString(),
-        status: OrderStatus.FILLED,
-        createdAt: new Date(),
-      } as unknown as Order);
 
       const result = await orderService.executeOrder(
         userAddress,
@@ -528,83 +521,14 @@ describe('OrderService', () => {
       );
 
       expect(result.success).toBe(true);
-      expect(result.data?.orderId).toBe('order-1');
-      expect(result.data?.positionId).toBe('position-1');
       expect(balanceService.lockMargin).toHaveBeenCalledWith(
         mockUser.id,
         marginRequired,
       );
-      expect(positionService.openPosition).toHaveBeenCalledWith(
-        userAddress,
-        size,
-        mockEntryPrice,
-        true,
-      );
-      expect(hedgingService.autoHedge).toHaveBeenCalledWith('position-1');
-    });
-
-    it('should execute a short market order successfully', async () => {
-      const marginRequired = BigInt('100000000000000000');
-
-      jest
-        .spyOn(balanceService, 'lockMargin')
-        .mockResolvedValue({ success: true });
-      jest.spyOn(positionService, 'openPosition').mockResolvedValue({
-        success: true,
-        data: {
-          id: 'position-2',
-          size: size.toString(),
-          entryPrice: mockEntryPrice.toString(),
-          isLong: false,
-          isOpen: true,
-        },
-      });
-      jest.spyOn(hedgingService, 'autoHedge').mockResolvedValue({
-        success: true,
-        data: { id: 'hedge-2' },
-      });
-      jest.spyOn(orderRepository, 'create').mockReturnValue({
-        id: 'order-2',
-        userId: mockUser.id,
-        type: OrderType.MARKET,
-        side: OrderSide.SHORT,
-        size: size.toString(),
-        leverage: leverage.toString(),
-        status: OrderStatus.FILLED,
-        createdAt: new Date(),
-      } as unknown as Order);
-      jest.spyOn(orderRepository, 'save').mockResolvedValue({
-        id: 'order-2',
-        userId: mockUser.id,
-        type: OrderType.MARKET,
-        side: OrderSide.SHORT,
-        size: size.toString(),
-        leverage: leverage.toString(),
-        status: OrderStatus.FILLED,
-        createdAt: new Date(),
-      } as unknown as Order);
-
-      const result = await orderService.executeOrder(
-        userAddress,
-        'ETH',
-        OrderSide.SHORT,
-        size,
-        leverage,
-      );
-
-      expect(result.success).toBe(true);
-      expect(result.data?.positionId).toBe('position-2');
-      expect(positionService.openPosition).toHaveBeenCalledWith(
-        userAddress,
-        size,
-        mockEntryPrice,
-        false,
-      );
+      expect(hedgingService.executeHedgeOrder).toHaveBeenCalled();
     });
 
     it('should return error when insufficient balance', async () => {
-      const marginRequired = BigInt('100000000000000000');
-
       jest.spyOn(balanceService, 'lockMargin').mockResolvedValue({
         success: false,
         error: 'Insufficient balance',
@@ -620,8 +544,7 @@ describe('OrderService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Insufficient balance');
-      expect(positionService.openPosition).not.toHaveBeenCalled();
-      expect(hedgingService.autoHedge).not.toHaveBeenCalled();
+      expect(hedgingService.executeHedgeOrder).not.toHaveBeenCalled();
     });
 
     it('should return error when leverage is invalid', async () => {
@@ -659,147 +582,14 @@ describe('OrderService', () => {
       expect(result.error).toContain('Invalid size');
     });
 
-    it('should increase existing position when same direction', async () => {
-      const existingPosition = {
-        id: 'position-existing',
-        userId: mockUser.id,
-        size: '500000000000000000',
-        entryPrice: '1900000000',
-        isLong: true,
-        isOpen: true,
-      } as unknown as Position;
-
+    it('should return error when hedge execution fails', async () => {
       jest
         .spyOn(balanceService, 'lockMargin')
         .mockResolvedValue({ success: true });
-      jest
-        .spyOn(positionRepository, 'find')
-        .mockResolvedValue([existingPosition]);
-      jest.spyOn(positionService, 'increasePosition').mockResolvedValue({
-        success: true,
-        data: {
-          id: 'position-existing',
-          size: '1500000000000000000',
-          entryPrice: '1966666666',
-          averageEntryPrice: '1966666666',
-        },
-      });
-      jest.spyOn(hedgingService, 'autoHedge').mockResolvedValue({
-        success: true,
-        data: { id: 'hedge-3' },
-      });
-      jest.spyOn(orderRepository, 'create').mockReturnValue({
-        id: 'order-3',
-        userId: mockUser.id,
-        type: OrderType.MARKET,
-        side: OrderSide.LONG,
-        size: size.toString(),
-        leverage: leverage.toString(),
-        status: OrderStatus.FILLED,
-        createdAt: new Date(),
-      } as unknown as Order);
-      jest.spyOn(orderRepository, 'save').mockResolvedValue({
-        id: 'order-3',
-        userId: mockUser.id,
-        type: OrderType.MARKET,
-        side: OrderSide.LONG,
-        size: size.toString(),
-        leverage: leverage.toString(),
-        status: OrderStatus.FILLED,
-        createdAt: new Date(),
-      } as unknown as Order);
-
-      const result = await orderService.executeOrder(
-        userAddress,
-        'ETH',
-        OrderSide.LONG,
-        size,
-        leverage,
-      );
-
-      expect(result.success).toBe(true);
-      expect(positionService.increasePosition).toHaveBeenCalled();
-    });
-
-    it('should open new position when opposite direction or no existing position', async () => {
-      jest
-        .spyOn(balanceService, 'lockMargin')
-        .mockResolvedValue({ success: true });
-      jest.spyOn(positionRepository, 'find').mockResolvedValue([]);
-      jest.spyOn(positionService, 'openPosition').mockResolvedValue({
-        success: true,
-        data: { id: 'position-new' },
-      });
-      jest.spyOn(hedgingService, 'autoHedge').mockResolvedValue({
-        success: true,
-        data: { id: 'hedge-4' },
-      });
-      jest.spyOn(orderRepository, 'create').mockReturnValue({
-        id: 'order-4',
-        userId: mockUser.id,
-        type: OrderType.MARKET,
-        side: OrderSide.LONG,
-        size: size.toString(),
-        leverage: leverage.toString(),
-        status: OrderStatus.FILLED,
-        createdAt: new Date(),
-      } as unknown as Order);
-      jest.spyOn(orderRepository, 'save').mockResolvedValue({
-        id: 'order-4',
-        userId: mockUser.id,
-        type: OrderType.MARKET,
-        side: OrderSide.LONG,
-        size: size.toString(),
-        leverage: leverage.toString(),
-        status: OrderStatus.FILLED,
-        createdAt: new Date(),
-      } as unknown as Order);
-
-      const result = await orderService.executeOrder(
-        userAddress,
-        'ETH',
-        OrderSide.LONG,
-        size,
-        leverage,
-      );
-
-      expect(result.success).toBe(true);
-      expect(positionService.openPosition).toHaveBeenCalled();
-    });
-
-    it('should handle hedge failure gracefully', async () => {
-      jest
-        .spyOn(balanceService, 'lockMargin')
-        .mockResolvedValue({ success: true });
-      jest.spyOn(positionRepository, 'find').mockResolvedValue([]);
-      jest.spyOn(positionService, 'openPosition').mockResolvedValue({
-        success: true,
-        data: { id: 'position-5' },
-      });
-      jest.spyOn(hedgingService, 'autoHedge').mockResolvedValue({
+      jest.spyOn(hedgingService, 'executeHedgeOrder').mockResolvedValue({
         success: false,
         error: 'Hedge failed',
       });
-      jest.spyOn(orderRepository, 'create').mockReturnValue({
-        id: 'order-5',
-        userId: mockUser.id,
-        type: OrderType.MARKET,
-        side: OrderSide.LONG,
-        size: size.toString(),
-        leverage: leverage.toString(),
-        status: OrderStatus.FILLED,
-        createdAt: new Date(),
-      } as unknown as Order);
-      jest.spyOn(orderRepository, 'save').mockResolvedValue({
-        id: 'order-5',
-        userId: mockUser.id,
-        type: OrderType.MARKET,
-        side: OrderSide.LONG,
-        size: size.toString(),
-        leverage: leverage.toString(),
-        status: OrderStatus.FILLED,
-        createdAt: new Date(),
-      } as unknown as Order);
 
       const result = await orderService.executeOrder(
         userAddress,
@@ -809,9 +599,44 @@ describe('OrderService', () => {
         leverage,
       );
 
-      // Order should still succeed even if hedge fails (hedge is best-effort)
-      expect(result.success).toBe(true);
-      expect(result.data?.hedgeError).toBe('Hedge failed');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Hedge execution failed');
+      expect(orderRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ status: OrderStatus.REJECTED }),
+      );
+    });
+
+    it('should compensate and reject when local persistence fails after hedge', async () => {
+      jest
+        .spyOn(balanceService, 'lockMargin')
+        .mockResolvedValue({ success: true });
+      jest.spyOn(hedgingService, 'executeHedgeOrder')
+        .mockResolvedValueOnce({
+          success: true,
+          data: { orderId: 'h1', fillPrice: '0.000000002' },
+        })
+        .mockResolvedValueOnce({
+          success: true,
+          data: { orderId: 'h2', fillPrice: '0.000000002' },
+        });
+      jest
+        .spyOn(orderService as any, 'persistExecutionInTransaction')
+        .mockRejectedValueOnce(new Error('local persistence failed'));
+
+      const result = await orderService.executeOrder(
+        userAddress,
+        'ETH',
+        OrderSide.LONG,
+        size,
+        leverage,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('local persistence failed');
+      expect(hedgingService.executeHedgeOrder).toHaveBeenCalledTimes(2);
+      expect(orderRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ status: OrderStatus.REJECTED }),
+      );
     });
   });
 

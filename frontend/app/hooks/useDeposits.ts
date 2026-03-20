@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { apiFetchJson } from '../lib/api';
 
 interface Deposit {
   id: string;
@@ -42,14 +43,10 @@ export function useDeposits(userAddress: string, options: UseDepositsOptions = {
     queryKey: ['deposits', userAddress, currentPage, limit],
     queryFn: async () => {
       if (!userAddress) return { data: [], totalPages: 0, currentPage: 0 };
-      const response = await fetch(`/api/deposit/user/${userAddress}?page=${currentPage}&limit=${limit}`);
-      const result = await response.json();
+      const result = await apiFetchJson<any>(
+        `/deposit/user/${userAddress}?page=${currentPage}&limit=${limit}`,
+      );
 
-      if (!response.ok || (result.success === false)) {
-        throw new Error(result.error || 'Failed to fetch deposits');
-      }
-
-      // Backend returns { data: Deposit[], totalPages: number, currentPage: number }
       return {
         data: result.data || [],
         totalPages: result.totalPages || 1,

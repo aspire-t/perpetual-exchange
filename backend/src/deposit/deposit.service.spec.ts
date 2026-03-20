@@ -4,6 +4,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../entities/User.entity';
 import { Deposit } from '../entities/Deposit.entity';
+import { ConfigService } from '@nestjs/config';
 
 describe('DepositService', () => {
   let depositService: DepositService;
@@ -12,6 +13,8 @@ describe('DepositService', () => {
 
   const mockUserRepository = {
     findOne: jest.fn(),
+    create: jest.fn(),
+    save: jest.fn(),
   };
 
   const mockDepositRepository = {
@@ -19,6 +22,13 @@ describe('DepositService', () => {
     save: jest.fn(),
     findOne: jest.fn(),
     find: jest.fn(),
+  };
+  const mockConfigService = {
+    get: jest.fn((key: string) => {
+      if (key === 'NODE_ENV') return 'test';
+      if (key === 'ENABLE_FAUCET') return 'true';
+      return undefined;
+    }),
   };
 
   beforeEach(async () => {
@@ -32,6 +42,10 @@ describe('DepositService', () => {
         {
           provide: getRepositoryToken(Deposit),
           useValue: mockDepositRepository,
+        },
+        {
+          provide: ConfigService,
+          useValue: mockConfigService,
         },
       ],
     }).compile();
@@ -227,6 +241,23 @@ describe('DepositService', () => {
       expect(mockUserRepository.findOne).toHaveBeenCalledWith({
         where: { address: normalizedAddress },
       });
+    });
+  });
+
+  describe('faucet', () => {
+    const address = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
+
+    it('should reject when faucet is disabled', async () => {
+      mockConfigService.get.mockImplementation((key: string) => {
+        if (key === 'ENABLE_FAUCET') return 'false';
+        if (key === 'NODE_ENV') return 'production';
+        return undefined;
+      });
+
+      const result = await depositService.faucet(address, '100000000');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('disabled');
     });
   });
 });

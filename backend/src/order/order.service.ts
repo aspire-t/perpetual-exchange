@@ -14,7 +14,10 @@ import { HedgingService } from '../hedging/hedging.service';
 import { PriceService } from '../price/price.service';
 import { RiskEngineService } from '../risk/risk-engine.service';
 import { Position } from '../entities/Position.entity';
+import { Hedge, HedgeStatus } from '../entities/Hedge.entity';
 import { ethers } from 'ethers';
+import { DataSource } from 'typeorm';
+import { scaleInternalToQuoteRoundedUp } from '../common/precision';
 
 @Injectable()
 export class OrderService {
@@ -32,7 +35,87 @@ export class OrderService {
     private hedgingService: HedgingService,
     private priceService: PriceService,
     private riskEngineService: RiskEngineService,
+    private dataSource: DataSource,
   ) {}
+
+  private async persistExecutionInTransaction(params: {
+    userId: string;
+    side: OrderSide;
+    symbol: string;
+    size: bigint;
+    leverage: bigint;
+    exactCurrentPrice: bigint;
+    isShortHedge: boolean;
+    hedgeOrderId: string;
+  }) {
+    return this.dataSource.transaction(async (manager) => {
+      const existingPositions = await manager.find(Position, {
+        where: {
+          userId: params.userId,
+          isOpen: true,
+          isLong: params.side === OrderSide.LONG,
+        },
+      });
+
+      let position: Position;
+      let positionEntryPrice: string;
+
+      if (existingPositions.length > 0) {
+        position = existingPositions[0];
+        const oldSize = BigInt(position.size);
+        const oldEntryPrice = BigInt(position.entryPrice);
+        const newSize = oldSize + params.size;
+        const weightedTotal =
+          oldSize * oldEntryPrice + params.size * params.exactCurrentPrice;
+        const averageEntryPrice = weightedTotal / newSize;
+
+        position.size = newSize.toString();
+        position.entryPrice = averageEntryPrice.toString();
+        await manager.save(Position, position);
+        positionEntryPrice = averageEntryPrice.toString();
+      } else {
+        position = manager.create(Position, {
+          userId: params.userId,
+          size: params.size.toString(),
+          entryPrice: params.exactCurrentPrice.toString(),
+          isLong: params.side === OrderSide.LONG,
+          isOpen: true,
+          leverage: params.leverage.toString(),
+          fundingPaid: '0',
+        });
+        await manager.save(Position, position);
+        positionEntryPrice = position.entryPrice;
+      }
+
+      const hedge = manager.create(Hedge, {
+        positionId: position.id,
+        size: params.size.toString(),
+        entryPrice: params.exactCurrentPrice.toString(),
+        isShort: params.isShortHedge,
+        status: HedgeStatus.OPEN,
+        hyperliquidOrderId: params.hedgeOrderId,
+      });
+      await manager.save(Hedge, hedge);
+
+      const order = manager.create(Order, {
+        userId: params.userId,
+        type: OrderType.MARKET,
+        side: params.side,
+        symbol: params.symbol,
+        size: params.size.toString(),
+        leverage: params.leverage.toString(),
+        fillPrice: params.exactCurrentPrice.toString(),
+        status: OrderStatus.FILLED,
+      });
+      await manager.save(Order, order);
+
+      return {
+        orderId: order.id,
+        positionId: position.id,
+        positionEntryPrice,
+      };
+    });
+  }
 
   async createOrder(
     userAddress: string,
@@ -407,8 +490,7 @@ export class OrderService {
     // Convert margin to USDC decimals (6) for balance locking
     // Use ceiling division to ensure we lock enough funds
     // marginRequiredUSDC = ceil(marginRequired / 1e12)
-    const marginRequiredUSDC =
-      (marginRequired + BigInt(1e12) - BigInt(1)) / BigInt(1e12);
+    const marginRequiredUSDC = scaleInternalToQuoteRoundedUp(marginRequired);
 
     // Lock margin
     const lockResult = await this.balanceService.lockMargin(
@@ -425,19 +507,35 @@ export class OrderService {
     const tradingFee = notionalValue / BigInt(1000); // 0.1% = 1/1000
 
     // Convert fee to USDC decimals (6)
-    const tradingFeeUSDC = (tradingFee + BigInt(1e12) - BigInt(1)) / BigInt(1e12);
+    const tradingFeeUSDC = scaleInternalToQuoteRoundedUp(tradingFee);
 
-    // Deduct trading fee
     const feeResult = await this.balanceService.deductFee(user.id, tradingFeeUSDC);
     if (!feeResult.success) {
-      // Release margin if fee deduction fails
       await this.balanceService.releaseMargin(user.id, marginRequiredUSDC);
       return { success: false, error: feeResult.error };
     }
 
-    // STP Execution: Execute hedge FIRST to get exact execution price
-    // Long position -> Short hedge, Short position -> Long hedge
     const isShortHedge = side === OrderSide.LONG;
+    const saveRejectedOrder = async () => {
+      const rejectedOrder = this.orderRepository.create();
+      rejectedOrder.userId = user.id;
+      rejectedOrder.type = OrderType.MARKET;
+      rejectedOrder.side = side;
+      rejectedOrder.symbol = symbol;
+      rejectedOrder.size = size.toString();
+      rejectedOrder.leverage = leverage.toString();
+      rejectedOrder.status = OrderStatus.REJECTED;
+      await this.orderRepository.save(rejectedOrder);
+      return rejectedOrder;
+    };
+    const refundFunds = async () => {
+      await this.balanceService.releaseMargin(user.id, marginRequiredUSDC);
+      await this.balanceService.refundFee(user.id, tradingFeeUSDC);
+    };
+    const compensateHedge = async () => {
+      return this.hedgingService.executeHedgeOrder(symbol, size, !isShortHedge);
+    };
+
     const hedgeResult = await this.hedgingService.executeHedgeOrder(
       symbol,
       size,
@@ -445,13 +543,8 @@ export class OrderService {
     );
 
     if (!hedgeResult.success || !hedgeResult.data) {
-      // Refund margin and fee if hedge fails
-      await this.balanceService.releaseMargin(user.id, marginRequiredUSDC);
-      // Assuming we need to add fee back, we can just add it to user balance
-      // Wait, we don't have a refundFee method, let's release margin with fee as PnL?
-      // releaseMargin(userId, marginAmount, pnl) -> marginAmount + pnl will be added back.
-      // So we can do:
-      await this.balanceService.releaseMargin(user.id, BigInt(0), tradingFeeUSDC);
+      await refundFunds();
+      await saveRejectedOrder();
       return { success: false, error: `Hedge execution failed: ${hedgeResult.error}` };
     }
 
@@ -462,81 +555,50 @@ export class OrderService {
       exactCurrentPrice = currentPrice;
     }
 
-    // Check for existing same-direction position
-    const existingPositions = await this.positionRepository.find({
-      where: { userId: user.id, isOpen: true, isLong: side === OrderSide.LONG },
-    });
-
-    let positionId: string;
-    let positionEntryPrice: string;
-
-    if (existingPositions.length > 0) {
-      // Increase existing position
-      const existingPosition = existingPositions[0];
-      const increaseResult = await this.positionService.increasePosition(
-        existingPosition.id,
+    let persistedResult: {
+      orderId: string;
+      positionId: string;
+      positionEntryPrice: string;
+    };
+    try {
+      persistedResult = await this.persistExecutionInTransaction({
+        userId: user.id,
+        side,
+        symbol,
         size,
+        leverage,
         exactCurrentPrice,
-      );
-
-      if (!increaseResult.success) {
-        // This is a rare error since we already hedged.
-        this.logger.error(`Failed to increase position after hedge: ${increaseResult.error}`);
-        return { success: false, error: increaseResult.error };
+        isShortHedge,
+        hedgeOrderId: hedgeResult.data.orderId,
+      });
+    } catch (error) {
+      const compensateResult = await compensateHedge();
+      await refundFunds();
+      await saveRejectedOrder();
+      this.logger.error(`Failed to persist local execution after hedge: ${error.message}`);
+      if (!compensateResult.success) {
+        return {
+          success: false,
+          error: `Failed to persist local execution: ${error.message}; hedge compensation failed: ${compensateResult.error}`,
+        };
       }
-
-      positionId = existingPosition.id;
-      positionEntryPrice = increaseResult.data.averageEntryPrice;
-    } else {
-      // Open new position
-      const openResult = await this.positionService.openPosition(
-        userAddress,
-        size,
-        exactCurrentPrice,
-        side === OrderSide.LONG,
-      );
-
-      if (!openResult.success) {
-        this.logger.error(`Failed to open position after hedge: ${openResult.error}`);
-        return { success: false, error: openResult.error };
-      }
-
-      positionId = openResult.data.id;
-      positionEntryPrice = openResult.data.entryPrice;
+      return {
+        success: false,
+        error: `Failed to persist local execution: ${error.message}`,
+      };
     }
-
-    // Create the Hedge entity record and link it to the positionId
-    await this.hedgingService.createHedgeRecord(
-      positionId,
-      size,
-      exactCurrentPrice,
-      isShortHedge,
-      hedgeResult.data.orderId,
-    );
-
-    // Create order record
-    const order = this.orderRepository.create();
-    order.userId = user.id;
-    order.type = OrderType.MARKET;
-    order.side = side;
-    order.size = size.toString();
-    order.leverage = leverage.toString();
-    order.fillPrice = exactCurrentPrice.toString();
-    order.status = OrderStatus.FILLED;
-
-    await this.orderRepository.save(order);
 
     this.logger.log(
       `Order executed: user=${userAddress}, side=${side}, size=${size.toString()}, ` +
-        `leverage=${leverage.toString()}, positionId=${positionId}`,
+        `leverage=${leverage.toString()}, positionId=${persistedResult.positionId}`,
     );
 
     return {
       success: true,
       data: {
-        orderId: order.id,
-        positionId,
-        entryPrice: positionEntryPrice,
+        orderId: persistedResult.orderId,
+        positionId: persistedResult.positionId,
+        entryPrice: persistedResult.positionEntryPrice,
         marginLocked: marginRequired.toString(),
       },
     };

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { apiFetchJson } from '../lib/api';
 
 interface Withdrawal {
   id: string;
@@ -42,12 +43,9 @@ export function useWithdrawals(userAddress: string, options: UseWithdrawalsOptio
     queryKey: ['withdrawals', userAddress, currentPage, limit],
     queryFn: async () => {
       if (!userAddress) return { data: [], totalPages: 0, currentPage: 0 };
-      const response = await fetch(`/api/withdraw/user/${userAddress}?page=${currentPage}&limit=${limit}`);
-      const result = await response.json();
-
-      if (!response.ok || (result.success === false)) {
-        throw new Error(result.error || 'Failed to fetch withdrawals');
-      }
+      const result = await apiFetchJson<any>(
+        `/withdraw/user/${userAddress}?page=${currentPage}&limit=${limit}`,
+      );
 
       return {
         data: result.data || [],

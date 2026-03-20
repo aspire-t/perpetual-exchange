@@ -14,21 +14,24 @@ describe('EventListenerService', () => {
 
   const mockProvider = {
     on: jest.fn(),
+    getBlockNumber: jest.fn().mockResolvedValue(200),
   };
 
   const mockContract = {
     on: jest.fn(),
+    queryFilter: jest.fn(),
   };
 
   const mockIndexerService = {
     processDepositEvent: jest.fn(),
     processWithdrawEvent: jest.fn(),
+    getResumeBlock: jest.fn().mockResolvedValue(100),
   };
 
   const mockConfigService = {
     get: jest.fn((key: string, defaultValue?: string) => {
       if (key === 'RPC_URL') return 'http://localhost:8545';
-      if (key === 'VAULT_CONTRACT_ADDRESS')
+      if (key === 'VAULT_ADDRESS')
         return '0x1234567890123456789012345678901234567890';
       return defaultValue;
     }),
@@ -46,6 +49,8 @@ describe('EventListenerService', () => {
 
     (ethers.JsonRpcProvider as jest.Mock).mockReturnValue(mockProvider);
     (ethers.Contract as jest.Mock).mockReturnValue(mockContract);
+    (ethers.isAddress as jest.Mock).mockReturnValue(true);
+    mockContract.queryFilter.mockResolvedValue([]);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -171,6 +176,78 @@ describe('EventListenerService', () => {
         transactionHash: '0xdef456',
         blockNumber: 101,
       });
+    });
+
+    it('should replay historical events from resume block', async () => {
+      mockContract.queryFilter
+        .mockResolvedValueOnce([
+          {
+            args: {
+              user: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
+              amount: BigInt('1000000000000000000'),
+            },
+            transactionHash: '0xdep1',
+            blockNumber: 120,
+          },
+        ])
+        .mockResolvedValueOnce([
+          {
+            args: {
+              user: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
+              amount: BigInt('500000000000000000'),
+            },
+            transactionHash: '0xwd1',
+            blockNumber: 121,
+          },
+        ]);
+
+      await eventListenerService.onModuleInit();
+
+      expect(mockIndexerService.getResumeBlock).toHaveBeenCalledWith(0);
+      expect(mockContract.queryFilter).toHaveBeenCalledWith('Deposit', 100, 200);
+      expect(mockContract.queryFilter).toHaveBeenCalledWith('Withdraw', 100, 200);
+      expect(mockIndexerService.processDepositEvent).toHaveBeenCalledWith(
+        '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
+        BigInt('1000000000000000000'),
+        '0xdep1',
+        120,
+      );
+      expect(mockIndexerService.processWithdrawEvent).toHaveBeenCalledWith(
+        '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
+        BigInt('500000000000000000'),
+        '0xwd1',
+        121,
+      );
+    });
+  });
+
+  describe('constructor', () => {
+    it('should throw when vault address is missing', async () => {
+      const invalidConfigService = {
+        get: jest.fn((key: string, defaultValue?: string) => {
+          if (key === 'RPC_URL') return 'http://localhost:8545';
+          if (key === 'VAULT_ADDRESS') return undefined;
+          return defaultValue;
+        }),
+      };
+
+      await expect(
+        Test.createTestingModule({
+          providers: [
+            EventListenerService,
+            {
+              provide: IndexerService,
+              useValue: mockIndexerService,
+            },
+            {
+              provide: ConfigService,
+              useValue: invalidConfigService,
+            },
+          ],
+        }).compile(),
+      ).rejects.toThrow(
+        'VAULT_ADDRESS is required',
+      );
     });
   });
 

@@ -7,6 +7,9 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  UseGuards,
+  Req,
+  UnauthorizedException,
 } from '@nestjs/common';
 import {
   IsEthereumAddress,
@@ -15,6 +18,7 @@ import {
   IsBoolean,
 } from 'class-validator';
 import { PositionService } from './position.service';
+import { JwtAuthGuard, JwtUserPayload } from '../auth/jwt-auth.guard';
 
 export class OpenPositionDto {
   @IsEthereumAddress()
@@ -51,10 +55,14 @@ export class PositionController {
   constructor(private readonly positionService: PositionService) {}
 
   @Post('open')
+  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.CREATED)
-  async openPosition(@Body() body: OpenPositionDto) {
+  async openPosition(
+    @Body() body: OpenPositionDto,
+    @Req() req: { user: JwtUserPayload },
+  ) {
     return this.positionService.openPosition(
-      body.address,
+      req.user.address,
       BigInt(body.size),
       BigInt(body.entryPrice),
       body.isLong,
@@ -62,7 +70,18 @@ export class PositionController {
   }
 
   @Post(':id/close')
-  async closePosition(@Param('id') id: string) {
+  @UseGuards(JwtAuthGuard)
+  async closePosition(
+    @Param('id') id: string,
+    @Req() req: { user: JwtUserPayload },
+  ) {
+    const positionResult = await this.positionService.getPosition(id);
+    if (!positionResult.success || !positionResult.data) {
+      return positionResult;
+    }
+    if (positionResult.data.userId !== req.user.sub) {
+      throw new UnauthorizedException('Position does not belong to authenticated user');
+    }
     return this.positionService.closePosition(id);
   }
 

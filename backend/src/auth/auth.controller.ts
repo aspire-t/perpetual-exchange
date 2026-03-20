@@ -1,5 +1,12 @@
-import { Controller, Post, Body, UnauthorizedException } from '@nestjs/common';
-import { IsEthereumAddress, IsNotEmpty, IsString } from 'class-validator';
+import {
+  Controller,
+  Post,
+  Body,
+  UnauthorizedException,
+  Get,
+  Query,
+} from '@nestjs/common';
+import { IsEthereumAddress, IsNotEmpty, IsString, IsNumber } from 'class-validator';
 import { AuthService } from './auth.service';
 
 export class LoginDto {
@@ -9,11 +16,25 @@ export class LoginDto {
 
   @IsString()
   @IsNotEmpty()
-  message: string;
+  nonce: string;
 
   @IsString()
   @IsNotEmpty()
   signature: string;
+
+  @IsNumber()
+  @IsNotEmpty()
+  issuedAt: number;
+
+  @IsString()
+  @IsNotEmpty()
+  statement: string;
+}
+
+export class NonceQueryDto {
+  @IsEthereumAddress()
+  @IsNotEmpty()
+  address: string;
 }
 
 @Controller('auth')
@@ -25,8 +46,10 @@ export class AuthController {
     try {
       return await this.authService.login(
         loginDto.address,
-        loginDto.message,
         loginDto.signature,
+        loginDto.nonce,
+        loginDto.issuedAt,
+        loginDto.statement,
       );
     } catch (error) {
       if (error instanceof UnauthorizedException) {
@@ -34,5 +57,10 @@ export class AuthController {
       }
       throw new UnauthorizedException('Invalid signature');
     }
+  }
+
+  @Get('nonce')
+  async getNonce(@Query() query: NonceQueryDto) {
+    return this.authService.getNonce(query.address);
   }
 }

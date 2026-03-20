@@ -5,6 +5,8 @@ import { Position } from '../entities/Position.entity';
 import { User } from '../entities/User.entity';
 import { PriceService } from '../price/price.service';
 import { ethers } from 'ethers';
+import { scaleQuoteToInternal } from '../common/precision';
+import { ConfigService } from '@nestjs/config';
 
 /**
  * Risk Engine Service
@@ -38,7 +40,12 @@ export class RiskEngineService {
     @InjectRepository(User)
     private userRepository: Repository<User>,
     private readonly priceService: PriceService,
+    private readonly configService: ConfigService,
   ) {}
+
+  private getRiskPriceSymbol(): string {
+    return this.configService.get<string>('RISK_PRICE_SYMBOL', 'ETH');
+  }
 
   /**
    * Check if a new position is within risk limits
@@ -68,7 +75,7 @@ export class RiskEngineService {
       return {
         success: true,
         allowed: false,
-        reason: `Lverage exceeds maximum allowed (${this.MAX_LEVERAGE}x)`,
+        reason: `Leverage exceeds maximum allowed (${this.MAX_LEVERAGE}x)`,
       };
     }
 
@@ -92,8 +99,7 @@ export class RiskEngineService {
       };
     }
 
-    // Convert user balance from USDC decimals (6) to internal precision (18)
-    const userBalance = BigInt(user.balance) * BigInt(1e12);
+    const userBalance = scaleQuoteToInternal(BigInt(user.balance));
     const requiredMargin = positionSize / BigInt(leverage);
 
     // Check if user has sufficient balance
@@ -427,7 +433,7 @@ export class RiskEngineService {
       }> = [];
 
       // Get current price from oracle
-      const priceResult = await this.priceService.getPrice('ETH');
+      const priceResult = await this.priceService.getPrice(this.getRiskPriceSymbol());
       if (!priceResult.success || !priceResult.data) {
         return {
           success: false,
@@ -509,7 +515,7 @@ export class RiskEngineService {
     }> = [];
 
     // Get current price once for all liquidations
-    const priceResult = await this.priceService.getPrice('ETH');
+    const priceResult = await this.priceService.getPrice(this.getRiskPriceSymbol());
     if (!priceResult.success || !priceResult.data) {
       return {
         success: false,

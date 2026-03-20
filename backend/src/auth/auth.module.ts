@@ -5,6 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { User } from '../entities/User.entity';
+import { getRequiredConfig } from '../common/required-config';
 
 @Module({
   imports: [
@@ -12,10 +13,7 @@ import { User } from '../entities/User.entity';
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({
-        secret: configService.get(
-          'JWT_SECRET',
-          'your-secret-key-change-in-production',
-        ),
+        secret: getRequiredConfig(configService, 'JWT_SECRET'),
         signOptions: { expiresIn: '7d' },
       }),
       inject: [ConfigService],

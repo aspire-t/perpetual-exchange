@@ -1,6 +1,7 @@
-import { Controller, Post, Body, Get, Param } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, UseGuards, Req } from '@nestjs/common';
 import { IsEthereumAddress, IsNotEmpty, IsString } from 'class-validator';
 import { DepositService } from './deposit.service';
+import { JwtAuthGuard, JwtUserPayload } from '../auth/jwt-auth.guard';
 
 export class DepositDto {
   @IsEthereumAddress()
@@ -39,9 +40,13 @@ export class DepositController {
    * Only available in development environment
    */
   @Post('faucet')
-  async faucet(@Body() body: { address: string; amount?: string }) {
+  @UseGuards(JwtAuthGuard)
+  async faucet(
+    @Body() body: { address: string; amount?: string },
+    @Req() req: { user: JwtUserPayload },
+  ) {
     return await this.depositService.faucet(
-      body.address,
+      req.user.address,
       body.amount || '100000000', // 100 USDC (6 decimals)
     );
   }

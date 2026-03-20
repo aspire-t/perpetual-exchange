@@ -93,7 +93,7 @@ describe('BalanceService', () => {
   describe('getBalance', () => {
     it('should return balance for user with deposits', async () => {
       const address = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
-      const user = { id: '1', address } as User;
+      const user = { id: '1', address, balance: '500' } as User;
 
       mockUserRepository.findOne.mockResolvedValue(user);
 
@@ -147,7 +147,7 @@ describe('BalanceService', () => {
 
     it('should return zero balances when user has no activity', async () => {
       const address = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
-      const user = { id: '1', address } as User;
+      const user = { id: '1', address, balance: '0' } as User;
 
       mockUserRepository.findOne.mockResolvedValue(user);
 
@@ -203,7 +203,7 @@ describe('BalanceService', () => {
 
     it('should calculate available balance correctly with pending withdrawals only', async () => {
       const address = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
-      const user = { id: '1', address } as User;
+      const user = { id: '1', address, balance: '400' } as User;
 
       mockUserRepository.findOne.mockResolvedValue(user);
 
@@ -388,6 +388,21 @@ describe('BalanceService', () => {
       expect(result).toEqual({ success: true });
     });
 
+    it('should reject release when negative pnl causes negative balance', async () => {
+      const user = { id: userId, balance: '100000000000000000' } as User;
+      mockQueryRunner.manager.findOne.mockResolvedValue(user);
+
+      const result = await balanceService.releaseMargin(
+        userId,
+        BigInt(0),
+        BigInt('-200000000000000000'),
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Insufficient balance');
+      expect(mockQueryRunner.commitTransaction).not.toHaveBeenCalled();
+    });
+
     it('should return error when user not found', async () => {
       mockQueryRunner.manager.findOne.mockResolvedValue(null);
 
@@ -419,6 +434,47 @@ describe('BalanceService', () => {
       expect(mockQueryRunner.rollbackTransaction).toHaveBeenCalled();
       expect(result.success).toBe(false);
       expect(result.error).toContain('Failed to release margin');
+    });
+  });
+
+  describe('refundFee', () => {
+    const userId = 'user-1';
+    const feeAmount = BigInt('200000000000000000');
+
+    beforeEach(() => {
+      mockQueryRunner.connect.mockClear();
+      mockQueryRunner.startTransaction.mockClear();
+      mockQueryRunner.commitTransaction.mockClear();
+      mockQueryRunner.rollbackTransaction.mockClear();
+      mockQueryRunner.release.mockClear();
+      mockQueryRunner.manager.findOne.mockClear();
+      mockQueryRunner.manager.save.mockClear();
+    });
+
+    it('should refund fee successfully', async () => {
+      const user = { id: userId, balance: '1000000000000000000' } as User;
+      mockQueryRunner.manager.findOne.mockResolvedValue(user);
+      mockQueryRunner.manager.save.mockResolvedValue({
+        ...user,
+        balance: '1200000000000000000',
+      });
+
+      const result = await balanceService.refundFee(userId, feeAmount);
+
+      expect(result).toEqual({ success: true });
+      expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
+      expect(mockQueryRunner.manager.save).toHaveBeenCalled();
+    });
+
+    it('should return error when user not found', async () => {
+      mockQueryRunner.manager.findOne.mockResolvedValue(null);
+
+      const result = await balanceService.refundFee(userId, feeAmount);
+
+      expect(result).toEqual({
+        success: false,
+        error: 'User not found',
+      });
     });
   });
 });

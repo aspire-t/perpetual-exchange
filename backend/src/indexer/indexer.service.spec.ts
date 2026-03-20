@@ -33,6 +33,7 @@ describe('IndexerService', () => {
 
   const mockProcessedEventRepository = {
     findOne: jest.fn(),
+    find: jest.fn(),
     create: jest.fn(),
     save: jest.fn(),
   };
@@ -419,6 +420,59 @@ describe('IndexerService', () => {
         reason: 'Event already processed',
       });
       expect(mockQueryRunner.manager.create).not.toHaveBeenCalled();
+    });
+
+    it('should block processing when locked balance is insufficient', async () => {
+      const userAddress = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
+      const amount = BigInt('500000000000000000');
+      const txHash = '0xdef789';
+      const blockNumber = 102;
+      const user = {
+        id: '1',
+        address: userAddress,
+        locked: '100000000000000000',
+      } as User;
+
+      mockQueryRunner.manager.findOne.mockImplementation((entity) => {
+        if (typeof entity === 'function' && entity.name === 'User') {
+          return Promise.resolve(user);
+        }
+        if (typeof entity === 'function' && entity.name === 'ProcessedEvent') {
+          return Promise.resolve(null);
+        }
+        return Promise.resolve(null);
+      });
+
+      const result = await indexerService.processWithdrawEvent(
+        userAddress,
+        amount,
+        txHash,
+        blockNumber,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Insufficient locked balance');
+      expect(mockQueryRunner.manager.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getResumeBlock', () => {
+    it('should return start block when no processed events exist', async () => {
+      mockProcessedEventRepository.findOne.mockResolvedValue(null);
+
+      const result = await indexerService.getResumeBlock(100);
+
+      expect(result).toBe(100);
+    });
+
+    it('should return latest processed block + 1 when greater than start block', async () => {
+      mockProcessedEventRepository.findOne.mockResolvedValue({
+        blockNumber: 250,
+      } as ProcessedEvent);
+
+      const result = await indexerService.getResumeBlock(100);
+
+      expect(result).toBe(251);
     });
   });
 });

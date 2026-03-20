@@ -5,20 +5,20 @@ import { useAccount } from 'wagmi';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Navigation } from '../components/Navigation';
 import toast from 'react-hot-toast';
+import { useAuthToken } from '../hooks/useAuthToken';
+import { apiFetch, apiFetchJson } from '../lib/api';
 
 export default function WithdrawPage() {
   const { isConnected, address } = useAccount();
   const [amount, setAmount] = useState('');
+  const { ensureToken } = useAuthToken();
 
   // Fetch user balance
   const { data: balanceData } = useQuery({
     queryKey: ['balance', address],
     queryFn: async () => {
       if (!address) return { success: true, data: { balance: '0' } };
-      const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
-      const response = await fetch(`${BACKEND_URL}/balance/${address}`);
-      if (!response.ok) throw new Error('Failed to fetch balance');
-      return response.json();
+      return apiFetchJson(`/balance/${address}`);
     },
     enabled: !!address,
   });
@@ -27,12 +27,14 @@ export default function WithdrawPage() {
   const withdraw = useMutation({
     mutationFn: async (withdrawAmount: string) => {
       if (!address) throw new Error('Wallet not connected');
-      const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
-      const response = await fetch(`${BACKEND_URL}/withdraw`, {
+      const token = await ensureToken();
+      const response = await apiFetch('/withdraw', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
-          address,
           amount: BigInt(Math.floor(Number(withdrawAmount) * 1e18)).toString(),
         }),
       });

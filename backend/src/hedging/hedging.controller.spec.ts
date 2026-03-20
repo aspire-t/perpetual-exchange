@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { HedgingController } from './hedging.controller';
 import { HedgingService } from './hedging.service';
+import { JwtService } from '@nestjs/jwt';
 
 describe('HedgingController', () => {
   let controller: HedgingController;
@@ -20,6 +21,10 @@ describe('HedgingController', () => {
         {
           provide: HedgingService,
           useValue: mockHedgingService,
+        },
+        {
+          provide: JwtService,
+          useValue: { verify: jest.fn() },
         },
       ],
     }).compile();

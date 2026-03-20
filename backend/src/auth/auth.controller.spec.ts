@@ -9,6 +9,7 @@ describe('AuthController', () => {
 
   const mockAuthService = {
     login: jest.fn(),
+    getNonce: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -30,8 +31,10 @@ describe('AuthController', () => {
     it('should return token and user on valid signature', async () => {
       const loginDto = {
         address: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
-        message: 'Sign in to Perpetual Exchange',
         signature: '0xvalidsignature',
+        nonce: 'nonce-1',
+        issuedAt: 1711111111,
+        statement: 'Login to Exchange',
       };
       const expectedResult = {
         token: 'token123',
@@ -44,8 +47,10 @@ describe('AuthController', () => {
 
       expect(authService.login).toHaveBeenCalledWith(
         loginDto.address,
-        loginDto.message,
         loginDto.signature,
+        loginDto.nonce,
+        loginDto.issuedAt,
+        loginDto.statement,
       );
       expect(result).toEqual(expectedResult);
     });
@@ -53,8 +58,10 @@ describe('AuthController', () => {
     it('should throw UnauthorizedException on invalid signature', async () => {
       const loginDto = {
         address: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
-        message: 'Sign in to Perpetual Exchange',
         signature: '0xinvalid',
+        nonce: 'nonce-1',
+        issuedAt: 1711111111,
+        statement: 'Login to Exchange',
       };
 
       mockAuthService.login.mockRejectedValue(
@@ -64,6 +71,23 @@ describe('AuthController', () => {
       await expect(authController.login(loginDto)).rejects.toThrow(
         UnauthorizedException,
       );
+    });
+  });
+
+  describe('getNonce', () => {
+    it('should return nonce payload', async () => {
+      const address = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
+      const expectedResult = {
+        success: true,
+        nonce: 'abc',
+      };
+
+      mockAuthService.getNonce.mockResolvedValue(expectedResult);
+
+      const result = await authController.getNonce({ address });
+
+      expect(authService.getNonce).toHaveBeenCalledWith(address);
+      expect(result).toEqual(expectedResult);
     });
   });
 });

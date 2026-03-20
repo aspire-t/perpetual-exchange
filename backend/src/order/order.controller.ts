@@ -1,4 +1,5 @@
 import {
+  UseGuards,
   Controller,
   Get,
   Post,
@@ -7,6 +8,7 @@ import {
   HttpCode,
   HttpStatus,
   Query,
+  Req,
 } from '@nestjs/common';
 import {
   IsEthereumAddress,
@@ -17,11 +19,12 @@ import {
 } from 'class-validator';
 import { OrderService } from './order.service';
 import { OrderType, OrderSide, OrderStatus } from '../entities/Order.entity';
+import { JwtAuthGuard, JwtUserPayload } from '../auth/jwt-auth.guard';
 
 export class CreateOrderDto {
+  @IsOptional()
   @IsEthereumAddress()
-  @IsNotEmpty()
-  address: string;
+  address?: string;
 
   @IsEnum(OrderType)
   @IsNotEmpty()
@@ -67,10 +70,14 @@ export class OrderController {
   constructor(private readonly orderService: OrderService) {}
 
   @Post()
+  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.CREATED)
-  async createOrder(@Body() body: CreateOrderDto) {
+  async createOrder(
+    @Body() body: CreateOrderDto,
+    @Req() req: { user: JwtUserPayload },
+  ) {
     return this.orderService.executeOrder(
-      body.address,
+      req.user.address,
       body.symbol,
       body.side,
       BigInt(body.size),

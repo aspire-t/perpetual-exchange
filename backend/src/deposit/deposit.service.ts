@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
+import { ConfigService } from '@nestjs/config';
 import { User } from '../entities/User.entity';
 import { Deposit } from '../entities/Deposit.entity';
 
@@ -11,7 +12,16 @@ export class DepositService {
     private userRepository: Repository<User>,
     @InjectRepository(Deposit)
     private depositRepository: Repository<Deposit>,
+    private readonly configService: ConfigService,
   ) {}
+
+  private isFaucetEnabled(): boolean {
+    const enableFaucet = this.configService.get<string>('ENABLE_FAUCET');
+    if (typeof enableFaucet === 'string') {
+      return enableFaucet.toLowerCase() === 'true';
+    }
+    return this.configService.get<string>('NODE_ENV') !== 'production';
+  }
 
   async deposit(
     address: string,
@@ -101,6 +111,13 @@ export class DepositService {
     data?: { address: string; amount: string; newBalance: string };
     error?: string;
   }> {
+    if (!this.isFaucetEnabled()) {
+      return {
+        success: false,
+        error: 'Faucet is disabled',
+      };
+    }
+
     const normalizedAddress = address.toLowerCase();
 
     // Find or create user

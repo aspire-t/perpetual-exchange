@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { ethers } from 'ethers';
 import { User } from '../entities/User.entity';
 import { Withdrawal } from '../entities/Withdrawal.entity';
+import { getRequiredVaultAddress } from '../common/vault-address.config';
 
 @Injectable()
 export class WithdrawalService {
@@ -23,10 +24,7 @@ export class WithdrawalService {
     private dataSource: DataSource,
   ) {
     const rpcUrl = this.configService.get<string>('RPC_URL', 'http://localhost:8545');
-    this.vaultAddress = this.configService.get<string>(
-      'VAULT_CONTRACT_ADDRESS',
-      '0x5FbDB2315678afecb367f032d93F642f64180aa3', // Default Hardhat deployment address
-    );
+    this.vaultAddress = getRequiredVaultAddress(this.configService);
     const privateKey = this.configService.get<string>('HYPERLIQUID_PRIVATE_KEY') || this.configService.get<string>('OPERATOR_PRIVATE_KEY');
 
     this.provider = new ethers.JsonRpcProvider(rpcUrl);

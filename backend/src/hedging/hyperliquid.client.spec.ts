@@ -223,9 +223,30 @@ describe('HyperliquidClient', () => {
             call[0].includes('/exchange'),
           );
           const payload = exchangeCall[1];
-          // Short -> Slippage 0.95 -> 3000.5 * 0.95 = 2850.475
-          expect(parseFloat(payload.action.orders[0].p)).toBeCloseTo(2850.475);
+          // Short -> Slippage 0.995 -> 3000.5 * 0.995 = 2985.4975
+          expect(parseFloat(payload.action.orders[0].p)).toBeCloseTo(2985.4975);
           expect(payload.action.orders[0].t.limit.tif).toBe('Ioc');
+      });
+    });
+
+    describe('when credentials are missing in production', () => {
+      beforeEach(async () => {
+        await setupModule((key: string) => {
+          if (key === 'HYPERLIQUID_API_URL')
+            return 'https://api.hyperliquid.xyz';
+          if (key === 'HYPERLIQUID_API_KEY') return undefined;
+          if (key === 'HYPERLIQUID_WALLET_ADDRESS') return undefined;
+          if (key === 'HYPERLIQUID_PRIVATE_KEY') return undefined;
+          if (key === 'NODE_ENV') return 'production';
+          return undefined;
+        });
+      });
+
+      it('should fail instead of falling back to mock mode', async () => {
+        const result = await hyperliquidClient.placeOrder('ETH', '1.0', false);
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('credentials');
       });
     });
   });
@@ -431,4 +452,3 @@ describe('HyperliquidClient', () => {
     });
   });
 });
-

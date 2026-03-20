@@ -13,6 +13,8 @@ import { RiskEngineModule } from '../risk/risk-engine.module';
 import { Deposit } from '../entities/Deposit.entity';
 import { Withdrawal } from '../entities/Withdrawal.entity';
 import { Hedge } from '../entities/Hedge.entity';
+import { AuthModule } from '../auth/auth.module';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @Module({
   imports: [
@@ -28,9 +30,10 @@ import { Hedge } from '../entities/Hedge.entity';
     HedgingModule,
     PriceModule,
     RiskEngineModule,
+    AuthModule,
   ],
   controllers: [OrderController],
-  providers: [OrderService, BalanceService],
+  providers: [OrderService, BalanceService, JwtAuthGuard],
   exports: [OrderService],
 })
 export class OrderModule {}

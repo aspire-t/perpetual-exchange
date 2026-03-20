@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { FaucetController } from './faucet.controller';
 import { FaucetService } from './faucet.service';
+import { JwtService } from '@nestjs/jwt';
 
 describe('FaucetController', () => {
   let faucetController: FaucetController;
@@ -17,6 +18,10 @@ describe('FaucetController', () => {
         {
           provide: FaucetService,
           useValue: mockFaucetService,
+        },
+        {
+          provide: JwtService,
+          useValue: { verify: jest.fn() },
         },
       ],
     }).compile();
@@ -38,7 +43,9 @@ describe('FaucetController', () => {
 
       mockFaucetService.mint.mockResolvedValue(expectedResult);
 
-      const result = await faucetController.mint(mintDto);
+      const result = await faucetController.mint(mintDto, {
+        user: { address: mintDto.address },
+      });
 
       expect(faucetService.mint).toHaveBeenCalledWith(
         mintDto.address,
@@ -59,7 +66,9 @@ describe('FaucetController', () => {
 
       mockFaucetService.mint.mockResolvedValue(expectedResult);
 
-      const result = await faucetController.mint(mintDto);
+      const result = await faucetController.mint(mintDto, {
+        user: { address: mintDto.address },
+      });
 
       expect(result).toEqual(expectedResult);
     });

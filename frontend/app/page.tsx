@@ -1,7 +1,35 @@
+ 'use client';
+
 import Link from 'next/link';
 import { Navigation } from './components/Navigation';
+import { useQuery } from '@tanstack/react-query';
+import { apiFetchJson } from './lib/api';
+
+function formatUsdFromWei(value?: string) {
+  if (!value) return '--';
+  return `$${(Number(BigInt(value)) / 1e18).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
 
 export default function Home() {
+  const { data: statsData } = useQuery({
+    queryKey: ['platform-stats'],
+    queryFn: () =>
+      apiFetchJson<{
+        success: boolean;
+        data: {
+          totalValueLocked: string;
+          openInterest: string;
+          volume24h: string;
+          trades24h: number;
+        };
+      }>('/stats'),
+    refetchInterval: 30000,
+  });
+  const stats = statsData?.data;
+
   return (
     <div className="min-h-screen bg-[var(--background-primary)]">
       <Navigation />
@@ -67,19 +95,27 @@ export default function Home() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
             <div className="text-center">
               <p className="text-sm text-[var(--text-muted)] mb-1">Total Value Locked</p>
-              <p className="text-2xl font-mono font-bold text-[var(--text-primary)]">--</p>
+              <p className="text-2xl font-mono font-bold text-[var(--text-primary)]">
+                {formatUsdFromWei(stats?.totalValueLocked)}
+              </p>
             </div>
             <div className="text-center">
               <p className="text-sm text-[var(--text-muted)] mb-1">24h Volume</p>
-              <p className="text-2xl font-mono font-bold text-[var(--text-primary)]">--</p>
+              <p className="text-2xl font-mono font-bold text-[var(--text-primary)]">
+                {formatUsdFromWei(stats?.volume24h)}
+              </p>
             </div>
             <div className="text-center">
               <p className="text-sm text-[var(--text-muted)] mb-1">Open Interest</p>
-              <p className="text-2xl font-mono font-bold text-[var(--text-primary)]">--</p>
+              <p className="text-2xl font-mono font-bold text-[var(--text-primary)]">
+                {formatUsdFromWei(stats?.openInterest)}
+              </p>
             </div>
             <div className="text-center">
               <p className="text-sm text-[var(--text-muted)] mb-1">Total Trades</p>
-              <p className="text-2xl font-mono font-bold text-[var(--text-primary)]">--</p>
+              <p className="text-2xl font-mono font-bold text-[var(--text-primary)]">
+                {stats ? stats.trades24h.toLocaleString() : '--'}
+              </p>
             </div>
           </div>
         </div>

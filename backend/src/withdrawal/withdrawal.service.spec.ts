@@ -49,7 +49,8 @@ describe('WithdrawalService', () => {
       if (key === 'HYPERLIQUID_PRIVATE_KEY')
         return '0x0123456789012345678901234567890123456789012345678901234567890123';
       if (key === 'RPC_URL') return 'http://localhost:8545';
-      if (key === 'VAULT_CONTRACT_ADDRESS') return '0xVaultAddress';
+      if (key === 'VAULT_ADDRESS')
+        return '0x1234567890123456789012345678901234567890';
       return defaultValue;
     }),
   };
@@ -70,6 +71,7 @@ describe('WithdrawalService', () => {
     (ethers.JsonRpcProvider as jest.Mock).mockReturnValue(mockProvider);
     (ethers.Wallet as jest.Mock).mockReturnValue(mockWallet);
     (ethers.Contract as jest.Mock).mockReturnValue(mockContract);
+    (ethers.isAddress as jest.Mock).mockReturnValue(true);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [

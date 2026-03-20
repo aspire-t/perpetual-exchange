@@ -6,6 +6,7 @@ import { Hedge, HedgeStatus } from '../entities/Hedge.entity';
 import { Position } from '../entities/Position.entity';
 import { PriceService } from '../price/price.service';
 import { HyperliquidClient } from './hyperliquid.client';
+import { ConfigService } from '@nestjs/config';
 
 describe('HedgingService', () => {
   let hedgingService: HedgingService;
@@ -56,6 +57,14 @@ describe('HedgingService', () => {
     createQueryRunner: jest.fn().mockReturnValue(mockQueryRunner),
   };
 
+  const mockConfigService = {
+    get: jest.fn((key: string, defaultValue?: string) => {
+      if (key === 'HEDGE_SYMBOL') return 'BTC';
+      if (key === 'HEDGE_SIZE_DECIMALS') return '18';
+      return defaultValue;
+    }),
+  };
+
   beforeEach(async () => {
     // Reset all mock implementations
     mockQueryRunner.manager.findOne.mockReset();
@@ -89,6 +98,10 @@ describe('HedgingService', () => {
         {
           provide: DataSource,
           useValue: mockDataSource,
+        },
+        {
+          provide: ConfigService,
+          useValue: mockConfigService,
         },
       ],
     }).compile();
@@ -165,6 +178,11 @@ describe('HedgingService', () => {
       expect(result.success).toBe(true);
       expect(result.data?.isShort).toBe(true);
       expect(result.data?.size).toBe(mockPosition.size.toString());
+      expect(hyperliquidClient.placeOrder).toHaveBeenCalledWith(
+        'BTC',
+        '1',
+        true,
+      );
       expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
     });
 
@@ -327,6 +345,7 @@ describe('HedgingService', () => {
       expect(result.success).toBe(true);
       expect(result.data?.status).toBe(HedgeStatus.CLOSED);
       expect(result.data?.pnl).toBe('100000000');
+      expect(hyperliquidClient.closePosition).toHaveBeenCalledWith('BTC');
       expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
     });
 
@@ -651,7 +670,7 @@ describe('HedgingService', () => {
       expect(result.success).toBe(true);
       expect(result.data?.synced).toBe(true);
       expect(result.data?.entryPrice).toBe('2100000000');
-      expect(hyperliquidClient.getPosition).toHaveBeenCalledWith('ETH');
+      expect(hyperliquidClient.getPosition).toHaveBeenCalledWith('BTC');
       expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
     });
 
@@ -702,6 +721,28 @@ describe('HedgingService', () => {
       expect(result.success).toBe(false);
       expect(result.error).toContain('Failed to sync hedge status');
       expect(mockQueryRunner.rollbackTransaction).toHaveBeenCalled();
+    });
+  });
+
+  describe('executeHedgeOrder', () => {
+    it('should keep sub-token precision when converting size', async () => {
+      jest.spyOn(hyperliquidClient, 'placeOrder').mockResolvedValue({
+        success: true,
+        data: { orderId: 'h-1', status: 'filled', price: '2000' },
+      });
+
+      const result = await hedgingService.executeHedgeOrder(
+        'BTC',
+        BigInt('500000000000000000'),
+        true,
+      );
+
+      expect(result.success).toBe(true);
+      expect(hyperliquidClient.placeOrder).toHaveBeenCalledWith(
+        'BTC',
+        '0.5',
+        true,
+      );
     });
   });
 

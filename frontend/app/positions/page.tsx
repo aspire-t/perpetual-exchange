@@ -3,6 +3,8 @@
 import { useAccount } from 'wagmi';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Navigation } from '../components/Navigation';
+import { apiFetch, apiFetchJson } from '../lib/api';
+import { useAuthToken } from '../hooks/useAuthToken';
 
 interface Position {
   id: string;
@@ -14,19 +16,14 @@ interface Position {
 
 export default function PositionsPage() {
   const { isConnected, address } = useAccount();
+  const { ensureToken } = useAuthToken();
 
   // Fetch user positions
   const { data: positionsData, isLoading, refetch } = useQuery({
     queryKey: ['positions', address],
     queryFn: async () => {
       if (!address) return { success: true, data: [] };
-      const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
-      const response = await fetch(`${BACKEND_URL}/position/user/${address}`);
-      const data = await response.json();
-      if (!response.ok || (data.success === false)) {
-        throw new Error(data.error || 'Failed to fetch positions');
-      }
-      return data;
+      return apiFetchJson(`/position/user/${address}`);
     },
     enabled: !!address,
   });
@@ -34,9 +31,12 @@ export default function PositionsPage() {
   // Close position mutation
   const closePosition = useMutation({
     mutationFn: async (positionId: string) => {
-      const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
-      const response = await fetch(`${BACKEND_URL}/position/${positionId}/close`, {
+      const token = await ensureToken();
+      const response = await apiFetch(`/position/${positionId}/close`, {
         method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
       });
       const data = await response.json();
       if (!response.ok || (data.success === false)) {

@@ -1,6 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { WithdrawalController } from './withdrawal.controller';
 import { WithdrawalService } from './withdrawal.service';
+import { GUARDS_METADATA } from '@nestjs/common/constants';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { JwtService } from '@nestjs/jwt';
 
 describe('WithdrawalController', () => {
   let withdrawalController: WithdrawalController;
@@ -19,6 +22,14 @@ describe('WithdrawalController', () => {
           provide: WithdrawalService,
           useValue: mockWithdrawalService,
         },
+        {
+          provide: JwtAuthGuard,
+          useValue: {},
+        },
+        {
+          provide: JwtService,
+          useValue: {},
+        },
       ],
     }).compile();
 
@@ -28,9 +39,18 @@ describe('WithdrawalController', () => {
   });
 
   describe('withdraw', () => {
+    it('should require JwtAuthGuard', () => {
+      const guards = Reflect.getMetadata(
+        GUARDS_METADATA,
+        WithdrawalController.prototype.withdraw,
+      );
+
+      expect(guards).toContain(JwtAuthGuard);
+    });
+
     it('should return success response', async () => {
       const withdrawalDto = {
-        address: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
+        address: '0x1111111111111111111111111111111111111111',
         amount: '500000000000000000',
       };
       const expectedResult = {
@@ -43,10 +63,13 @@ describe('WithdrawalController', () => {
 
       mockWithdrawalService.withdraw.mockResolvedValue(expectedResult);
 
-      const result = await withdrawalController.withdraw(withdrawalDto);
+      const result = await withdrawalController.withdraw(
+        withdrawalDto,
+        { user: { address: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266' } } as any,
+      );
 
       expect(withdrawalService.withdraw).toHaveBeenCalledWith(
-        withdrawalDto.address,
+        '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
         withdrawalDto.amount,
       );
       expect(result).toEqual(expectedResult);
@@ -64,7 +87,10 @@ describe('WithdrawalController', () => {
 
       mockWithdrawalService.withdraw.mockResolvedValue(expectedResult);
 
-      const result = await withdrawalController.withdraw(withdrawalDto);
+      const result = await withdrawalController.withdraw(
+        withdrawalDto,
+        { user: { address: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266' } } as any,
+      );
 
       expect(result).toEqual(expectedResult);
     });
@@ -89,10 +115,13 @@ describe('WithdrawalController', () => {
 
       mockWithdrawalService.withdraw.mockResolvedValue(expectedResult);
 
-      const result = await withdrawalController.requestWithdrawal(withdrawalDto);
+      const result = await withdrawalController.requestWithdrawal(
+        withdrawalDto,
+        { user: { address: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266' } } as any,
+      );
 
       expect(withdrawalService.withdraw).toHaveBeenCalledWith(
-        withdrawalDto.address,
+        '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
         withdrawalDto.amount,
       );
       expect(result).toEqual(expectedResult);

@@ -1,7 +1,17 @@
-// Contract addresses - update these after deployment
+function getRequiredAddress(name: 'NEXT_PUBLIC_USDC_ADDRESS' | 'NEXT_PUBLIC_VAULT_ADDRESS'): `0x${string}` {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`${name} is required`);
+  }
+  if (!/^0x[a-fA-F0-9]{40}$/.test(value)) {
+    throw new Error(`${name} is invalid`);
+  }
+  return value as `0x${string}`;
+}
+
 export const CONTRACTS = {
-  USDC: (process.env.NEXT_PUBLIC_USDC_ADDRESS || '0x5FbDB2315678afecb367f032d93F642f64180aa3') as `0x${string}`,
-  VAULT: (process.env.NEXT_PUBLIC_VAULT_ADDRESS || '0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512') as `0x${string}`,
+  USDC: getRequiredAddress('NEXT_PUBLIC_USDC_ADDRESS'),
+  VAULT: getRequiredAddress('NEXT_PUBLIC_VAULT_ADDRESS'),
 } as const;
 
 // USDC ABI (ERC20 with 6 decimals)

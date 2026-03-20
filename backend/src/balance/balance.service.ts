@@ -182,6 +182,13 @@ export class BalanceService {
 
       const currentBalance = BigInt(user.balance);
       const totalRelease = marginAmount + pnl;
+      if (currentBalance + totalRelease < BigInt(0)) {
+        await queryRunner.release();
+        return {
+          success: false,
+          error: `Insufficient balance: cannot apply release amount ${totalRelease.toString()} to current balance ${currentBalance.toString()}`,
+        };
+      }
       user.balance = (currentBalance + totalRelease).toString();
       await queryRunner.manager.save(user);
 
@@ -250,6 +257,45 @@ export class BalanceService {
       return {
         success: false,
         error: `Failed to deduct fee: ${error.message}`,
+      };
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  async refundFee(
+    userId: string,
+    feeAmount: bigint,
+  ): Promise<{ success: boolean; error?: string }> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const user = await queryRunner.manager.findOne(User, {
+        where: { id: userId },
+      });
+
+      if (!user) {
+        await queryRunner.release();
+        return { success: false, error: 'User not found' };
+      }
+
+      const currentBalance = BigInt(user.balance);
+      user.balance = (currentBalance + feeAmount).toString();
+      await queryRunner.manager.save(user);
+
+      await queryRunner.commitTransaction();
+
+      this.logger.log(`Fee refunded for user ${userId}: ${feeAmount.toString()}`);
+
+      return { success: true };
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      this.logger.error(`Failed to refund fee: ${error.message}`);
+      return {
+        success: false,
+        error: `Failed to refund fee: ${error.message}`,
       };
     } finally {
       await queryRunner.release();

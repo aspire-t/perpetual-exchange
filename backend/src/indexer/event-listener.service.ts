@@ -2,6 +2,7 @@ import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ethers } from 'ethers';
 import { IndexerService } from './indexer.service';
+import { getRequiredVaultAddress } from '../common/vault-address.config';
 
 // Vault contract ABI - only the events we need
 const VAULT_ABI = [
@@ -20,10 +21,7 @@ export class EventListenerService implements OnModuleInit {
     private readonly indexerService: IndexerService,
   ) {
     const rpcUrl = this.configService.get<string>('RPC_URL', 'http://localhost:8545');
-    const contractAddress = this.configService.get<string>(
-      'VAULT_CONTRACT_ADDRESS',
-      '0x1234567890123456789012345678901234567890',
-    );
+    const contractAddress = getRequiredVaultAddress(this.configService);
 
     this.provider = new ethers.JsonRpcProvider(rpcUrl);
     this.contract = new ethers.Contract(contractAddress, VAULT_ABI, this.provider);
@@ -31,6 +29,46 @@ export class EventListenerService implements OnModuleInit {
 
   async onModuleInit() {
     this.logger.log('Starting event listener...');
+
+    const configuredStartBlock = Number(
+      this.configService.get<string>('START_BLOCK', '0'),
+    );
+    const resumeBlock =
+      await this.indexerService.getResumeBlock(configuredStartBlock);
+    const latestBlock = await this.provider.getBlockNumber();
+    if (resumeBlock <= latestBlock) {
+      const historicalDeposits = await this.contract.queryFilter(
+        'Deposit',
+        resumeBlock,
+        latestBlock,
+      );
+      for (const event of historicalDeposits) {
+        await this.handleDepositEvent({
+          args: {
+            user: event.args.user as string,
+            amount: event.args.amount as bigint,
+          },
+          transactionHash: event.transactionHash,
+          blockNumber: event.blockNumber,
+        });
+      }
+
+      const historicalWithdrawals = await this.contract.queryFilter(
+        'Withdraw',
+        resumeBlock,
+        latestBlock,
+      );
+      for (const event of historicalWithdrawals) {
+        await this.handleWithdrawEvent({
+          args: {
+            user: event.args.user as string,
+            amount: event.args.amount as bigint,
+          },
+          transactionHash: event.transactionHash,
+          blockNumber: event.blockNumber,
+        });
+      }
+    }
 
     // Listen for Deposit events
     this.contract.on('Deposit', async (user, amount, event) => {

@@ -56,7 +56,8 @@ describe('useOrders', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(global.fetch).toHaveBeenCalledWith(
-      '/api/order/user/0x1234567890123456789012345678901234567890?page=1&limit=10'
+      '/api/order/user/0x1234567890123456789012345678901234567890?page=1&limit=10',
+      undefined,
     );
   });
 
@@ -76,7 +77,8 @@ describe('useOrders', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(global.fetch).toHaveBeenCalledWith(
-      '/api/order/user/0x1234567890123456789012345678901234567890?page=2&limit=20'
+      '/api/order/user/0x1234567890123456789012345678901234567890?page=2&limit=20',
+      undefined,
     );
   });
 

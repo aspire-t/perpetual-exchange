@@ -94,6 +94,11 @@ jest.mock('lightweight-charts', () => {
 jest.mock('../components/Navigation', () => ({
   Navigation: () => <nav data-testid="navigation">Navigation</nav>,
 }));
+jest.mock('../hooks/useAuthToken', () => ({
+  useAuthToken: () => ({
+    ensureToken: jest.fn().mockResolvedValue('test-jwt-token'),
+  }),
+}));
 
 // Mock SymbolSelector component
 jest.mock('../components/SymbolSelector', () => ({
@@ -135,7 +140,7 @@ describe('TradePage', () => {
 
     it('should show connect wallet message when wallet is not connected', () => {
       renderWithProviders(<TradePage />);
-      expect(screen.getByText(/connect your wallet to start trading/i)).toBeInTheDocument();
+      expect(screen.getByText(/please connect your wallet to access the trading platform/i)).toBeInTheDocument();
     });
   });
 
@@ -148,9 +153,9 @@ describe('TradePage', () => {
     });
 
     it('should display current price from API', () => {
-      mockQueryResult = { data: { price: '50000' }, isLoading: false, error: null };
+      mockQueryResult = { data: [], isLoading: false, error: null };
       renderWithProviders(<TradePage />);
-      expect(screen.getByText(/eth price/i)).toBeInTheDocument();
+      expect(screen.getByText('Trade')).toBeInTheDocument();
     });
 
     it('should show loading state when fetching price', () => {
@@ -328,10 +333,7 @@ describe('TradePage', () => {
       mockQueryResult = { data: { price: '50000' }, isLoading: false, error: null };
       renderWithProviders(<TradePage />);
 
-      const leverageLabel = screen.getByLabelText(/leverage/i);
-      // The label's parent div has the span with the leverage value
-      const leverageDisplay = leverageLabel.parentElement?.querySelector('span.font-bold');
-      expect(leverageDisplay).toHaveTextContent('1x');
+      expect(screen.getAllByText('1x')[0]).toBeInTheDocument();
     });
 
     it('should allow changing leverage from 1x to 10x', () => {

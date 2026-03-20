@@ -5,6 +5,7 @@ import { Hedge, HedgeStatus } from '../entities/Hedge.entity';
 import { Position } from '../entities/Position.entity';
 import { PriceService } from '../price/price.service';
 import { HyperliquidClient } from './hyperliquid.client';
+import { ConfigService } from '@nestjs/config';
 
 /**
  * Hedging Service
@@ -25,8 +26,18 @@ export class HedgingService {
     private positionRepository: Repository<Position>,
     private readonly priceService: PriceService,
     private readonly hyperliquidClient: HyperliquidClient,
+    private readonly configService: ConfigService,
     private dataSource: DataSource,
   ) {}
+
+  private getHedgeSymbol(): string {
+    return this.configService.get<string>('HEDGE_SYMBOL', 'ETH');
+  }
+
+  private getHedgeSizeDecimals(): bigint {
+    const decimals = this.configService.get<string>('HEDGE_SIZE_DECIMALS', '18');
+    return BigInt(decimals);
+  }
 
   /**
    * Execute hedge order directly without requiring a position ID.
@@ -146,7 +157,7 @@ export class HedgingService {
 
       // Place order on Hyperliquid
       const orderResult = await this.hyperliquidClient.placeOrder(
-        'ETH', // Assuming ETH perpetual
+        this.getHedgeSymbol(),
         this.weiToTokenSize(BigInt(position.size)),
         hedge.isShort,
       );
@@ -241,7 +252,8 @@ export class HedgingService {
       }
 
       // Close position on Hyperliquid
-      const closeResult = await this.hyperliquidClient.closePosition('ETH');
+      const hedgeSymbol = this.getHedgeSymbol();
+      const closeResult = await this.hyperliquidClient.closePosition(hedgeSymbol);
 
       if (!closeResult.success) {
         await queryRunner.release();
@@ -252,7 +264,7 @@ export class HedgingService {
       }
 
       // Get current price for PnL calculation
-      const priceResult = await this.priceService.getPrice('ETH');
+      const priceResult = await this.priceService.getPrice(hedgeSymbol);
       const currentPrice =
         priceResult.success && priceResult.data
           ? priceResult.data.price
@@ -413,7 +425,9 @@ export class HedgingService {
       }
 
       // Get position from Hyperliquid
-      const positionResult = await this.hyperliquidClient.getPosition('ETH');
+      const positionResult = await this.hyperliquidClient.getPosition(
+        this.getHedgeSymbol(),
+      );
 
       if (!positionResult.success) {
         await queryRunner.release();
@@ -479,9 +493,21 @@ export class HedgingService {
    * Hyperliquid uses token units, not wei
    */
   private weiToTokenSize(weiSize: bigint): string {
-    // Assuming 18 decimals for ETH
-    const decimals = BigInt('1000000000000000000');
-    return (weiSize / decimals).toString();
+    const decimals = this.getHedgeSizeDecimals();
+    const divisor = BigInt(10) ** decimals;
+    const integerPart = weiSize / divisor;
+    const fractionalPart = weiSize % divisor;
+
+    if (fractionalPart === BigInt(0)) {
+      return integerPart.toString();
+    }
+
+    const fractional = fractionalPart
+      .toString()
+      .padStart(Number(decimals), '0')
+      .replace(/0+$/, '');
+
+    return `${integerPart.toString()}.${fractional}`;
   }
 
   /**

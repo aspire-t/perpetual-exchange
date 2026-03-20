@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { IndexerController } from './indexer.controller';
 import { IndexerService } from './indexer.service';
+import { JwtService } from '@nestjs/jwt';
 
 describe('IndexerController', () => {
   let indexerController: IndexerController;
@@ -18,6 +19,10 @@ describe('IndexerController', () => {
         {
           provide: IndexerService,
           useValue: mockIndexerService,
+        },
+        {
+          provide: JwtService,
+          useValue: { verify: jest.fn() },
         },
       ],
     }).compile();

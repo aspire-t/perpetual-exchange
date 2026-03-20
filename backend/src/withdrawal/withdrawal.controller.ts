@@ -1,11 +1,12 @@
-import { Controller, Post, Body, Get, Param } from '@nestjs/common';
-import { IsEthereumAddress, IsNotEmpty, IsString } from 'class-validator';
+import { Controller, Post, Body, Get, Param, UseGuards, Req } from '@nestjs/common';
+import { IsEthereumAddress, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { WithdrawalService } from './withdrawal.service';
+import { JwtAuthGuard, JwtUserPayload } from '../auth/jwt-auth.guard';
 
 export class WithdrawalDto {
+  @IsOptional()
   @IsEthereumAddress()
-  @IsNotEmpty()
-  address: string;
+  address?: string;
 
   @IsString()
   @IsNotEmpty()
@@ -17,26 +18,38 @@ export class WithdrawalController {
   constructor(private withdrawalService: WithdrawalService) {}
 
   @Post()
-  async withdraw(@Body() withdrawalDto: WithdrawalDto) {
+  @UseGuards(JwtAuthGuard)
+  async withdraw(
+    @Body() withdrawalDto: WithdrawalDto,
+    @Req() req: { user: JwtUserPayload },
+  ) {
     return await this.withdrawalService.withdraw(
-      withdrawalDto.address,
+      req.user.address,
       withdrawalDto.amount,
     );
   }
 
   @Post('request')
-  async requestWithdrawal(@Body() withdrawalDto: WithdrawalDto) {
+  @UseGuards(JwtAuthGuard)
+  async requestWithdrawal(
+    @Body() withdrawalDto: WithdrawalDto,
+    @Req() req: { user: JwtUserPayload },
+  ) {
     return await this.withdrawalService.withdraw(
-      withdrawalDto.address,
+      req.user.address,
       withdrawalDto.amount,
     );
   }
 
   // Alias for backend consistency - /withdrawal also works
   @Post('../withdrawal')
-  async withdrawLegacy(@Body() withdrawalDto: WithdrawalDto) {
+  @UseGuards(JwtAuthGuard)
+  async withdrawLegacy(
+    @Body() withdrawalDto: WithdrawalDto,
+    @Req() req: { user: JwtUserPayload },
+  ) {
     return await this.withdrawalService.withdraw(
-      withdrawalDto.address,
+      req.user.address,
       withdrawalDto.amount,
     );
   }

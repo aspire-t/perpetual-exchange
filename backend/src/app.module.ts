@@ -59,6 +59,7 @@ import { TasksModule } from './tasks/tasks.module';
       }),
       inject: [ConfigService],
     }),
+    TypeOrmModule.forFeature([User, Position, Order]),
     AuthModule,
     FaucetModule,
     BalanceModule,

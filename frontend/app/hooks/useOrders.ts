@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { apiFetchJson } from '../lib/api';
 
 interface Order {
   id: string;
@@ -47,12 +48,9 @@ export function useOrders(userAddress: string, options: UseOrdersOptions = {}): 
     queryKey: ['orders', userAddress, currentPage, limit],
     queryFn: async () => {
       if (!userAddress) return { data: [], totalPages: 0, currentPage: 0 };
-      const response = await fetch(`/api/order/user/${userAddress}?page=${currentPage}&limit=${limit}`);
-      const result = await response.json();
-      
-      if (!response.ok || (result.success === false)) {
-        throw new Error(result.error || 'Failed to fetch orders');
-      }
+      const result = await apiFetchJson<any>(
+        `/order/user/${userAddress}?page=${currentPage}&limit=${limit}`,
+      );
 
       return {
         data: result.data || [],

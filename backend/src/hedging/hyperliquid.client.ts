@@ -92,6 +92,13 @@ export class HyperliquidClient {
         this.privateKey && this.walletAddress && this.apiKey;
 
       if (!hasCredentials) {
+        if (!this.isTestnet) {
+          return {
+            success: false,
+            error:
+              'Hyperliquid credentials are required in production environment',
+          };
+        }
         this.logger.warn(
           'Hyperliquid credentials not configured, using mock mode',
         );

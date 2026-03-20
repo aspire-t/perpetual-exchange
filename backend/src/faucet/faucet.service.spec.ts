@@ -4,6 +4,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../entities/User.entity';
 import { Deposit } from '../entities/Deposit.entity';
+import { ConfigService } from '@nestjs/config';
 
 describe('FaucetService', () => {
   let faucetService: FaucetService;
@@ -12,12 +13,21 @@ describe('FaucetService', () => {
 
   const mockUserRepository = {
     findOne: jest.fn(),
+    create: jest.fn(),
+    save: jest.fn(),
   };
 
   const mockDepositRepository = {
     create: jest.fn(),
     save: jest.fn(),
     findOne: jest.fn(),
+  };
+  const mockConfigService = {
+    get: jest.fn((key: string) => {
+      if (key === 'NODE_ENV') return 'test';
+      if (key === 'ENABLE_FAUCET') return 'true';
+      return undefined;
+    }),
   };
 
   beforeEach(async () => {
@@ -31,6 +41,10 @@ describe('FaucetService', () => {
         {
           provide: getRepositoryToken(Deposit),
           useValue: mockDepositRepository,
+        },
+        {
+          provide: ConfigService,
+          useValue: mockConfigService,
         },
       ],
     }).compile();
@@ -51,8 +65,9 @@ describe('FaucetService', () => {
     const mintAmount = '1000000000000000000'; // 1 ETH
 
     it('should create a deposit for user', async () => {
-      const user = { id: '1', address: userAddress };
+      const user = { id: '1', address: userAddress, balance: '0' };
       mockUserRepository.findOne.mockResolvedValue(user);
+      mockUserRepository.save.mockResolvedValue(user);
       mockDepositRepository.create.mockReturnValue({
         user,
         amount: mintAmount,
@@ -63,19 +78,28 @@ describe('FaucetService', () => {
       const result = await faucetService.mint(userAddress, mintAmount);
 
       expect(mockUserRepository.findOne).toHaveBeenCalledWith({
-        where: { address: userAddress },
+        where: { address: userAddress.toLowerCase() },
       });
       expect(result.success).toBe(true);
       expect(result.txHash).toContain('0x');
     });
 
-    it('should return error if user not found', async () => {
+    it('should create user if user not found', async () => {
+      const newUser = { id: '2', address: userAddress.toLowerCase(), balance: '0' };
       mockUserRepository.findOne.mockResolvedValue(null);
+      mockUserRepository.create.mockReturnValue(newUser);
+      mockUserRepository.save.mockResolvedValue(newUser);
+      mockDepositRepository.findOne.mockResolvedValue(null);
+      mockDepositRepository.create.mockReturnValue({
+        user: newUser,
+        amount: mintAmount,
+        txHash: '0x faucet-mint-tx',
+      });
+      mockDepositRepository.save.mockResolvedValue({ id: '1' });
 
       const result = await faucetService.mint(userAddress, mintAmount);
 
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('User not found');
+      expect(result.success).toBe(true);
     });
 
     it('should prevent duplicate mint within 24 hours', async () => {
@@ -94,6 +118,19 @@ describe('FaucetService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('24 hours');
+    });
+
+    it('should reject mint when faucet is disabled', async () => {
+      mockConfigService.get.mockImplementation((key: string) => {
+        if (key === 'ENABLE_FAUCET') return 'false';
+        if (key === 'NODE_ENV') return 'production';
+        return undefined;
+      });
+
+      const result = await faucetService.mint(userAddress, mintAmount);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('disabled');
     });
   });
 });

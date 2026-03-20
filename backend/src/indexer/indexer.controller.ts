@@ -1,11 +1,13 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards } from '@nestjs/common';
 import { IndexerService } from './indexer.service';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @Controller('indexer')
 export class IndexerController {
   constructor(private readonly indexerService: IndexerService) {}
 
   @Post('deposit')
+  @UseGuards(JwtAuthGuard)
   async handleDeposit(@Body() body: {
     address: string;
     amount: string;
@@ -21,6 +23,7 @@ export class IndexerController {
   }
 
   @Post('withdraw')
+  @UseGuards(JwtAuthGuard)
   async handleWithdraw(@Body() body: {
     address: string;
     amount: string;

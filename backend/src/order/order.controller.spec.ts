@@ -1,14 +1,17 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { OrderController } from './order.controller';
 import { OrderService } from './order.service';
-import { OrderType, OrderSide, OrderStatus } from '../entities/Order.entity';
+import { OrderSide, OrderStatus, OrderType } from '../entities/Order.entity';
+import { GUARDS_METADATA } from '@nestjs/common/constants';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { JwtService } from '@nestjs/jwt';
 
 describe('OrderController', () => {
   let controller: OrderController;
   let orderService: OrderService;
 
   const mockOrderService = {
-    createOrder: jest.fn(),
+    executeOrder: jest.fn(),
     getOrder: jest.fn(),
     getUserOrders: jest.fn(),
     cancelOrder: jest.fn(),
@@ -22,6 +25,14 @@ describe('OrderController', () => {
           provide: OrderService,
           useValue: mockOrderService,
         },
+        {
+          provide: JwtAuthGuard,
+          useValue: {},
+        },
+        {
+          provide: JwtService,
+          useValue: {},
+        },
       ],
     }).compile();
 
@@ -34,53 +45,42 @@ describe('OrderController', () => {
   });
 
   describe('createOrder', () => {
-    it('should create an order', async () => {
-      const mockResponse = {
-        success: true,
-        data: { id: 'order-1', status: OrderStatus.PENDING },
-      };
-
-      mockOrderService.createOrder.mockResolvedValue(mockResponse);
-
-      const result = await controller.createOrder({
-        address: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
-        type: OrderType.MARKET,
-        side: OrderSide.LONG,
-        size: '1000000000000000000',
-      });
-
-      expect(result).toEqual(mockResponse);
-      expect(orderService.createOrder).toHaveBeenCalledWith(
-        '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
-        OrderType.MARKET,
-        OrderSide.LONG,
-        BigInt('1000000000000000000'),
-        undefined,
+    it('should require JwtAuthGuard', () => {
+      const guards = Reflect.getMetadata(
+        GUARDS_METADATA,
+        OrderController.prototype.createOrder,
       );
+
+      expect(guards).toContain(JwtAuthGuard);
     });
 
-    it('should create a limit order with limit price', async () => {
+    it('should create order with authenticated address', async () => {
       const mockResponse = {
         success: true,
         data: { id: 'order-1', status: OrderStatus.PENDING },
       };
 
-      mockOrderService.createOrder.mockResolvedValue(mockResponse);
+      mockOrderService.executeOrder.mockResolvedValue(mockResponse);
 
-      await controller.createOrder({
-        address: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
-        type: OrderType.LIMIT,
-        side: OrderSide.SHORT,
-        size: '1000000000000000000',
-        limitPrice: '2000000000',
-      });
+      const result = await controller.createOrder(
+        {
+          address: '0x1111111111111111111111111111111111111111',
+          type: OrderType.MARKET,
+          side: OrderSide.LONG,
+          symbol: 'ETH',
+          size: '1000000000000000000',
+          leverage: '3',
+        },
+        { user: { address: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266' } } as any,
+      );
 
-      expect(orderService.createOrder).toHaveBeenCalledWith(
+      expect(result).toEqual(mockResponse);
+      expect(orderService.executeOrder).toHaveBeenCalledWith(
         '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
-        OrderType.LIMIT,
-        OrderSide.SHORT,
+        'ETH',
+        OrderSide.LONG,
         BigInt('1000000000000000000'),
-        BigInt('2000000000'),
+        BigInt('3'),
       );
     });
   });
@@ -120,6 +120,8 @@ describe('OrderController', () => {
       expect(result).toEqual(mockResponse);
       expect(orderService.getUserOrders).toHaveBeenCalledWith(
         '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
+        1,
+        50,
       );
     });
   });

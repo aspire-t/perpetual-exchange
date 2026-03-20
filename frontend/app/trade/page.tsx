@@ -9,6 +9,8 @@ import toast from 'react-hot-toast';
 import { useDeposits } from '../hooks/useDeposits';
 import { useWithdrawals } from '../hooks/useWithdrawals';
 import { useOrders } from '../hooks/useOrders';
+import { useAuthToken } from '../hooks/useAuthToken';
+import { apiFetch, apiFetchJson } from '../lib/api';
 import { KlineChart } from './components/KlineChart';
 import { TimeframeSelector } from './components/TimeframeSelector';
 
@@ -31,18 +33,13 @@ export default function TradePage() {
   const [timeframe, setTimeframe] = useState('15m');
   const [historyTab, setHistoryTab] = useState<HistoryTabType>('orders');
   const queryClient = useQueryClient();
+  const { ensureToken } = useAuthToken();
 
   // Fetch current price for selected symbol
   const { data: priceData, isLoading: priceLoading } = useQuery({
     queryKey: ['price', selectedSymbol],
     queryFn: async () => {
-      const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
-      const response = await fetch(`${BACKEND_URL}/price/${selectedSymbol}`);
-      const data = await response.json();
-      if (!response.ok || (data.success === false)) {
-        throw new Error(data.error || 'Failed to fetch price');
-      }
-      return data;
+      return apiFetchJson(`/price/${selectedSymbol}`);
     },
     refetchInterval: 5000,
   });
@@ -52,13 +49,7 @@ export default function TradePage() {
     queryKey: ['balance', address],
     queryFn: async () => {
       if (!address) return null;
-      const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
-      const response = await fetch(`${BACKEND_URL}/balance/${address}`);
-      const data = await response.json();
-      if (!response.ok || (data.success === false)) {
-        throw new Error(data.error || 'Failed to fetch balance');
-      }
-      return data;
+      return apiFetchJson(`/balance/${address}`);
     },
     enabled: !!address,
     refetchInterval: 5000,
@@ -68,9 +59,13 @@ export default function TradePage() {
   const faucetMutation = useMutation({
     mutationFn: async () => {
       if (!address) throw new Error('Wallet not connected');
-      const response = await fetch('/api/faucet/mint', {
+      const token = await ensureToken();
+      const response = await apiFetch('/faucet/mint', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({ address, amount: '100000000' }), // 100 USDC
       });
       const data = await response.json();
@@ -93,11 +88,14 @@ export default function TradePage() {
     mutationFn: async (orderData: OrderData) => {
       if (!address) throw new Error('Wallet not connected');
 
-      const response = await fetch('/api/order', {
+      const token = await ensureToken();
+      const response = await apiFetch('/order', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
-          address,
           type: 'market',
           side: orderData.side === 'Long' ? 'long' : 'short',
           symbol: orderData.symbol,
@@ -226,6 +224,7 @@ interface TradeSectionProps {
 }
 
 function TradeSection({ priceData, priceLoading, balanceData, faucetMutation, size, setSize, leverage, setLeverage, submitOrder, handleOrder, selectedSymbol, setSelectedSymbol }: TradeSectionProps) {
+  const tradingFee = size ? Number(size) * 0.0005 : 0;
   return (
     <div className="bg-[var(--background-secondary)] border border-[var(--border-default)] rounded-xl p-5 shadow-sm sticky top-24">
       {/* Header */}
@@ -314,7 +313,7 @@ function TradeSection({ priceData, priceLoading, balanceData, faucetMutation, si
           </div>
           <div className="flex justify-between text-xs">
             <span className="text-[var(--text-secondary)]">Trading Fee</span>
-            <span className="font-mono text-[var(--text-primary)]">0.00 USDC</span>
+            <span className="font-mono text-[var(--text-primary)]">{tradingFee.toFixed(2)} USDC</span>
           </div>
         </div>
       </div>
